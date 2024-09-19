@@ -1,0 +1,1 @@
+[assembly: TypeWrap.SourceGen.SkipGeneratorForAssembly]
