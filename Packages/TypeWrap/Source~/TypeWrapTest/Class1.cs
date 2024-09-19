@@ -5,7 +5,7 @@ using TypeWrap;
 
 namespace TypeWrapTest
 {
-    [WrapType(typeof(int))]
+    [WrapType(typeof(int), ExcludeConverter = true)]
     public partial struct IntWrapper
     {
         public readonly override int GetHashCode()
