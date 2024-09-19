@@ -11,8 +11,6 @@ namespace TypeWrap
 
         public string MemberName { get; }
 
-        public bool IsPrivate { get; }
-
         public bool ExcludeConverter { get; set; }
 
         public WrapTypeAttribute(Type type) : this(type, DEFAULT_MEMBER_NAME)
