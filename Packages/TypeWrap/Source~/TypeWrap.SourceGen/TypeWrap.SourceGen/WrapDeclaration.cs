@@ -61,7 +61,9 @@ namespace TypeWrap.SourceGen
 
         public HashSet<string> IgnoredMembers { get; }
 
-        public Dictionary<OperatorKind, OpReturnType> OperatorReturnTypeMap { get; }
+        public Dictionary<OperatorKind, OpType> OperatorReturnTypeMap { get; }
+
+        public Dictionary<OperatorKind, OpArgTypes> OperatorArgTypesMap { get; }
 
         public WrapDeclaration(
               TypeDeclarationSyntax syntax
@@ -213,6 +215,7 @@ namespace TypeWrap.SourceGen
             var hasBuiltInOperators = implementOperators != OperatorKind.None;
             var implementInterfaces = ImplementInterfaces;
             var operatorReturnTypeMap = OperatorReturnTypeMap = new(s_operatorKinds.Length);
+            var operatorArgTypesMap = OperatorArgTypesMap = new(s_operatorKinds.Length);
 
             foreach (var member in fieldTypeMembers)
             {
@@ -297,16 +300,27 @@ namespace TypeWrap.SourceGen
 
                         if (foundOp != OperatorKind.None)
                         {
-                            if (RetainReturnType(foundOp) == false
-                                && SymbolEqualityComparer.Default.Equals(method.ReturnType, fieldTypeSymbol)
-                            )
+                            operatorReturnTypeMap[foundOp] = GetOpType(
+                                method.ReturnType, fieldTypeSymbol, fullTypeName, RetainReturnType(foundOp)
+                            );
+
+                            var methodParams = method.Parameters;
+                            var methodParamsLength = methodParams.Length;
+
+                            if (methodParamsLength > 1)
                             {
-                                operatorReturnTypeMap[foundOp] = new OpReturnType(fullTypeName, true);
+                                operatorArgTypesMap[foundOp] = new OpArgTypes(
+                                      GetOpType(methodParams[0].Type, fieldTypeSymbol, fullTypeName, false)
+                                    , GetOpType(methodParams[1].Type, fieldTypeSymbol, fullTypeName, false)
+                                );
                             }
-                            else
+                            else if (methodParamsLength > 0)
                             {
-                                operatorReturnTypeMap[foundOp] = new OpReturnType(method.ReturnType.ToFullName());
+                                operatorArgTypesMap[foundOp] = new OpArgTypes(
+                                    GetOpType(methodParams[0].Type, fieldTypeSymbol, fullTypeName, false)
+                                );
                             }
+
                             continue;
                         }
 
@@ -363,6 +377,16 @@ namespace TypeWrap.SourceGen
             }
 
             return result;
+        }
+
+        private static OpType GetOpType(ITypeSymbol type, ITypeSymbol fieldType, string fullTypeName, bool retain)
+        {
+            if (retain == false && SymbolEqualityComparer.Default.Equals(type, fieldType))
+            {
+                return new OpType(fullTypeName, true);
+            }
+
+            return new OpType(type.ToFullName());
         }
 
         private static bool Validate(IMethodSymbol method)
@@ -592,6 +616,72 @@ namespace TypeWrap.SourceGen
             return fullTypeName;
         }
 
+        private static OpArgTypes DetermineArgTypes(
+              OperatorKind kind
+            , string fullTypeName
+            , SpecialType fieldSpecialType
+            , SpecialType fieldUnderlyingSpecialType
+        )
+        {
+            switch (kind)
+            {
+                case OperatorKind.UnaryPlus:
+                case OperatorKind.UnaryMinus:
+                case OperatorKind.Negation:
+                case OperatorKind.OnesComplement:
+                case OperatorKind.Increment:
+                case OperatorKind.Decrement:
+                case OperatorKind.True:
+                case OperatorKind.False:
+                    return new(new(fullTypeName, true));
+
+                case OperatorKind.Addition:
+                {
+                    if (fieldSpecialType != SpecialType.System_Enum)
+                    {
+                        return new(new(fullTypeName, true), new(fullTypeName, true));
+                    }
+
+                    return fieldUnderlyingSpecialType switch {
+                        SpecialType.System_SByte  => new(new(fullTypeName, true), new("sbyte")),
+                        SpecialType.System_Byte   => new(new(fullTypeName, true), new("byte")),
+                        SpecialType.System_Int16  => new(new(fullTypeName, true), new("short")),
+                        SpecialType.System_UInt16 => new(new(fullTypeName, true), new("ushort")),
+                        SpecialType.System_Int32  => new(new(fullTypeName, true), new("int")),
+                        SpecialType.System_UInt32 => new(new(fullTypeName, true), new("uint")),
+                        SpecialType.System_Int64  => new(new(fullTypeName, true), new("long")),
+                        SpecialType.System_UInt64 => new(new(fullTypeName, true), new("ulong")),
+                        _                         => new(new(fullTypeName, true), new("sbyte")),
+                    };
+                }
+
+                case OperatorKind.Substraction:
+                case OperatorKind.Multiplication:
+                case OperatorKind.Division:
+                case OperatorKind.Remainder:
+                case OperatorKind.LogicalAnd:
+                case OperatorKind.LogicalOr:
+                case OperatorKind.LogicalXor:
+                case OperatorKind.BitwiseAnd:
+                case OperatorKind.BitwiseOr:
+                case OperatorKind.BitwiseXor:
+                case OperatorKind.Equal:
+                case OperatorKind.NotEqual:
+                case OperatorKind.Greater:
+                case OperatorKind.Lesser:
+                case OperatorKind.GreaterEqual:
+                case OperatorKind.LesserEqual:
+                    return new(new(fullTypeName, true), new(fullTypeName, true));
+
+                case OperatorKind.LeftShift:
+                case OperatorKind.RightShift:
+                case OperatorKind.UnsignedRightShift:
+                    return new(new(fullTypeName, true), new("int"));
+
+                default:
+                    return default;
+            }
+        }
         private static bool FindOperator(IMethodSymbol method, out OperatorKind result)
         {
             if (method.IsStatic == false)
@@ -666,15 +756,85 @@ namespace TypeWrap.SourceGen
             OperatorKind.LesserEqual,
         };
 
-        public readonly struct OpReturnType
+        public readonly struct OpType
         {
             public readonly string Value;
             public readonly bool IsWrapper;
 
-            public OpReturnType(string value, bool isWrapper = false)
+            public OpType(string value, bool isWrapper = false)
             {
                 Value = value;
                 IsWrapper = isWrapper;
+            }
+        }
+
+        public readonly struct OpArgTypes
+        {
+            public readonly OpType First;
+            public readonly OpType Second;
+
+            public OpArgTypes(OpType first, OpType second = default)
+            {
+                First = first;
+                Second = second;
+            }
+
+            public void Deconstruct(
+                  out bool isValid
+                , out OpType firstType, out string firstName
+            )
+            {
+                firstType = First;
+
+                if (string.IsNullOrEmpty(firstType.Value) == false)
+                {
+                    firstName = "value";
+                    isValid = true;
+                }
+                else
+                {
+                    firstName = string.Empty;
+                    isValid = false;
+                }
+            }
+
+            public void Deconstruct(
+                  out bool isValid
+                , out OpType firstType, out string firstName
+                , out OpType secondType, out string secondName
+            )
+            {
+                firstType = First;
+                secondType = Second;
+
+                if (string.IsNullOrEmpty(secondType.Value))
+                {
+                    if (string.IsNullOrEmpty(firstType.Value))
+                    {
+                        firstName = secondName = string.Empty;
+                        isValid = false;
+                    }
+                    else
+                    {
+                        firstName = "value";
+                        secondName = string.Empty;
+                        isValid = true;
+                    }
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(firstType.Value))
+                    {
+                        firstName = secondName = string.Empty;
+                        isValid = false;
+                    }
+                    else
+                    {
+                        firstName = "left";
+                        secondName = "right";
+                        isValid = true;
+                    }
+                }
             }
         }
     }

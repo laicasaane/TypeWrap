@@ -286,6 +286,9 @@ namespace TypeWrap.SourceGen
             var sameType = SymbolEqualityComparer.Default.Equals(property.Type, FieldTypeSymbol);
             var hasParams = property.IsIndexer || property.Parameters.Length > 0;
             var isPublic = property.DeclaredAccessibility == Accessibility.Public;
+            var wrapperIsStruct = IsStruct;
+            var wrapperIsReadOnly = IsReadOnly;
+            var fieldTypeIsStruct = FieldTypeSymbol.TypeKind == TypeKind.Struct;
 
             p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
             p.PrintBeginLineIf(isPublic, "public ", "");
@@ -294,7 +297,7 @@ namespace TypeWrap.SourceGen
             p.PrintIf(property.RefKind == RefKind.RefReadOnly, "ref readonly ");
 
             var isRef = property.RefKind is RefKind.Ref or RefKind.RefReadOnly;
-            var canConvertType = IsStruct && sameType && isRef == false;
+            var canConvertType = wrapperIsStruct && sameType && isRef == false;
 
             p.PrintIf(canConvertType, FullTypeName, returnTypeName);
             p.Print(" ");
@@ -351,17 +354,42 @@ namespace TypeWrap.SourceGen
 
                 if (hasParams)
                 {
-                    WriteIndexerBody(ref p, property, accessor, isRef);
+                    WriteIndexerBody(
+                          ref p
+                        , property
+                        , accessor
+                        , isRef
+                        , wrapperIsStruct
+                        , wrapperIsReadOnly
+                        , fieldTypeIsStruct
+                    );
                 }
                 else
                 {
-                    WritePropertyBody(ref p, property, accessor, name, isRef);
+                    WritePropertyBody(
+                          ref p
+                        , property
+                        , accessor
+                        , name
+                        , isRef
+                        , wrapperIsStruct
+                        , wrapperIsReadOnly
+                        , fieldTypeIsStruct
+                    );
                 }
             }
             p.CloseScope();
             p.PrintEndLine();
 
-            static void WriteIndexerBody(ref Printer p, IPropertySymbol property, string accessor, bool isRef)
+            static void WriteIndexerBody(
+                  ref Printer p
+                , IPropertySymbol property
+                , string accessor
+                , bool isRef
+                , bool wrapperIsStruct
+                , bool wrapperIsReadOnly
+                , bool fieldTypeIsStruct
+            )
             {
                 if (property.GetMethod != null)
                 {
@@ -381,6 +409,11 @@ namespace TypeWrap.SourceGen
                     p.PrintEndLine();
                 }
 
+                if (fieldTypeIsStruct || (wrapperIsStruct && wrapperIsReadOnly))
+                {
+                    return;
+                }
+
                 if (property.SetMethod != null)
                 {
                     var isSetterRef = property.RefKind != RefKind.Ref && property.SetMethod.RefKind == RefKind.Ref;
@@ -396,7 +429,16 @@ namespace TypeWrap.SourceGen
                 }
             }
 
-            static void WritePropertyBody(ref Printer p, IPropertySymbol property, string accessor, string propName, bool isRef)
+            static void WritePropertyBody(
+                  ref Printer p
+                , IPropertySymbol property
+                , string accessor
+                , string propName
+                , bool isRef
+                , bool wrapperIsStruct
+                , bool wrapperIsReadOnly
+                , bool fieldTypeIsStruct
+            )
             {
                 if (property.GetMethod != null)
                 {
@@ -412,6 +454,11 @@ namespace TypeWrap.SourceGen
 
                     p.Print($"{accessor}.{propName}");
                     p.Print(";").PrintEndLine().PrintEndLine();
+                }
+
+                if (fieldTypeIsStruct || (wrapperIsStruct && wrapperIsReadOnly))
+                {
+                    return;
                 }
 
                 if (property.SetMethod != null)
@@ -879,6 +926,7 @@ namespace TypeWrap.SourceGen
             var ignoreOperators = IgnoreOperators;
             var implementOperators = ImplementOperators;
             var operatorReturnTypeMap = OperatorReturnTypeMap;
+            var operatorArgTypesMap = OperatorArgTypesMap;
             var fullTypeName = FullTypeName;
             var fieldTypeSymbol = FieldTypeSymbol;
             var fieldSpecialType = fieldTypeSymbol.SpecialType;
@@ -902,17 +950,22 @@ namespace TypeWrap.SourceGen
 
                 if (operatorReturnTypeMap.TryGetValue(operatorKind, out var opReturnType) == false)
                 {
-                    opReturnType = new OpReturnType(DetermineReturnType(operatorKind, fullTypeName), true);
+                    opReturnType = new OpType(DetermineReturnType(operatorKind, fullTypeName), true);
+                }
+
+                if (operatorArgTypesMap.TryGetValue(operatorKind, out var opArgTypes) == false)
+                {
+                    opArgTypes = DetermineArgTypes(operatorKind, fullTypeName, fieldSpecialType, fieldUnderlyingSpecialType);
                 }
 
                 WriteOperator(
                       ref p
                     , operatorKind
                     , fullTypeName
-                    , opReturnType
-                    , fieldSpecialType
-                    , fieldUnderlyingSpecialType
                     , fieldName
+                    , opReturnType
+                    , opArgTypes
+                    , fieldSpecialType
                 );
             }
 
@@ -926,18 +979,25 @@ namespace TypeWrap.SourceGen
               ref Printer p
             , OperatorKind kind
             , string fullTypeName
-            , OpReturnType opReturnType
-            , SpecialType fieldSpecialType
-            , SpecialType fieldUnderlyingSpecialType
             , string fieldName
+            , OpType opReturnType
+            , OpArgTypes opArgTypes
+            , SpecialType fieldSpecialType
         )
         {
+            var (isValid, firstType, firstName, secondType, secondName) = opArgTypes;
+
+            if (isValid == false)
+            {
+                return;
+            }
+
             var op = GetOp(kind);
-            var args = GetOpArgs(kind, fullTypeName, fieldSpecialType, fieldUnderlyingSpecialType);
 
             p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-            p.PrintBeginLine("public static ").Print(opReturnType.Value).Print(" operator ").Print(op)
-                .Print("(").Print(args).PrintEndLine(")");
+            p.PrintBeginLine("public static ").Print(opReturnType.Value).Print(" operator ").Print(op).Print("(");
+            WriteArgs(ref p, opArgTypes);
+            p.PrintEndLine(")");
             p.OpenScope();
             {
                 switch (kind)
@@ -951,11 +1011,15 @@ namespace TypeWrap.SourceGen
 
                         if (opReturnType.IsWrapper)
                         {
-                            p.Print("new ").Print(fullTypeName).Print("(").Print(op).Print("(value.").Print(fieldName).Print("))");
+                            p.Print("new ").Print(fullTypeName).Print("(").Print(op).Print("(");
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print("))");
                         }
                         else
                         {
-                            p.Print(op).Print("(value.").Print(fieldName).Print(")");
+                            p.Print(op).Print("(");
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print(")");
                         }
 
                         p.PrintEndLine(";");
@@ -965,9 +1029,12 @@ namespace TypeWrap.SourceGen
                     case OperatorKind.Increment:
                     case OperatorKind.Decrement:
                     {
-                        p.PrintBeginLine("var tempValue = ").Print("value.").Print(fieldName).PrintEndLine(";");
+                        p.PrintBeginLine("var tempValue = ");
+                        WriteParam(ref p, firstType, firstName, fieldName);
+                        p.PrintEndLine(";");
+
                         p.PrintBeginLine("tempValue ")
-                            .PrintIf(kind == OperatorKind.Increment, "+= 1", "-= 1")
+                            .PrintIf(kind == OperatorKind.Increment, "++", "--")
                             .PrintEndLine(";");
 
                         if (opReturnType.IsWrapper)
@@ -984,7 +1051,9 @@ namespace TypeWrap.SourceGen
                     case OperatorKind.True:
                     case OperatorKind.False:
                     {
-                        p.PrintBeginLine("return ").Print("value.").Print(fieldName).PrintEndLine(";");
+                        p.PrintBeginLine("return ");
+                        WriteParam(ref p, firstType, firstName, fieldName);
+                        p.PrintEndLine(";");
                         break;
                     }
 
@@ -999,17 +1068,16 @@ namespace TypeWrap.SourceGen
 
                         if (opReturnType.IsWrapper)
                         {
-                            p.Print("new ").Print(fullTypeName).Print("(")
-                                .Print("left.").Print(fieldName)
-                                .Print(" ").Print(op).Print(" ")
-                                .Print("right")
+                            p.Print("new ").Print(fullTypeName).Print("(");
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print(" ").Print(op).Print(" ").Print(secondName)
                                 .Print(")");
                         }
                         else
                         {
-                            p.Print("left.").Print(fieldName)
-                            .Print(" ").Print(op).Print(" ")
-                            .Print("right");
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print(" ").Print(op).Print(" ")
+                                .Print(secondName);
                         }
 
                         p.PrintEndLine(";");
@@ -1028,17 +1096,17 @@ namespace TypeWrap.SourceGen
 
                         if (opReturnType.IsWrapper)
                         {
-                            p.Print("new ").Print(fullTypeName).Print("(")
-                                .Print("left.").Print(fieldName)
-                                .Print(" ").Print(op).Print(" ")
-                                .Print("right.").Print(fieldName)
-                                .Print(")");
+                            p.Print("new ").Print(fullTypeName).Print("(");
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print(" ").Print(op).Print(" ");
+                            WriteParam(ref p, secondType, secondName, fieldName);
+                            p.Print(")");
                         }
                         else
                         {
-                            p.Print("left.").Print(fieldName)
-                            .Print(" ").Print(op).Print(" ")
-                            .Print("right.").Print(fieldName);
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print(" ").Print(op).Print(" ");
+                            WriteParam(ref p, secondType, secondName, fieldName);
                         }
 
                         p.PrintEndLine(";");
@@ -1055,11 +1123,11 @@ namespace TypeWrap.SourceGen
                     case OperatorKind.GreaterEqual:
                     case OperatorKind.LesserEqual:
                     {
-                        p.PrintBeginLine("return ")
-                            .Print("left.").Print(fieldName)
-                            .Print(" ").Print(op).Print(" ")
-                            .Print("right.").Print(fieldName)
-                            .PrintEndLine(";");
+                        p.PrintBeginLine("return ");
+                        WriteParam(ref p, firstType, firstName, fieldName);
+                        p.Print(" ").Print(op).Print(" ");
+                        WriteParam(ref p, secondType, secondName, fieldName);
+                        p.PrintEndLine(";");
                         break;
                     }
 
@@ -1071,17 +1139,17 @@ namespace TypeWrap.SourceGen
 
                         if (opReturnType.IsWrapper)
                         {
-                            p.Print("new ").Print(fullTypeName).Print("(")
-                                .Print("left.").Print(fieldName)
-                                .Print(" ").Print(op).Print(" ")
-                                .Print("count")
-                                .Print(")");
+                            p.Print("new ").Print(fullTypeName).Print("(");
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print(" ").Print(op).Print(" ");
+                            WriteParam(ref p, secondType, secondName, fieldName);
+                            p.Print(")");
                         }
                         else
                         {
-                            p.Print("left.").Print(fieldName)
-                            .Print(" ").Print(op).Print(" ")
-                            .Print("count");
+                            WriteParam(ref p, firstType, firstName, fieldName);
+                            p.Print(" ").Print(op).Print(" ");
+                            WriteParam(ref p, secondType, secondName, fieldName);
                         }
 
                         p.PrintEndLine(";");
@@ -1091,6 +1159,42 @@ namespace TypeWrap.SourceGen
             }
             p.CloseScope();
             p.PrintEndLine();
+
+            static void WriteArgs(ref Printer p, OpArgTypes opArgTypes)
+            {
+                var (isValid, firstType, firstName, secondType, secondName) = opArgTypes;
+
+                if (isValid == false)
+                {
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(secondName))
+                {
+                    WriteArg(ref p, firstType, firstName);
+                }
+                else
+                {
+                    WriteArg(ref p, firstType, firstName);
+                    p.Print(", ");
+                    WriteArg(ref p, secondType, secondName);
+                }
+            }
+
+            static void WriteArg(ref Printer p, OpType type, string name)
+            {
+                p.Print(type.Value).Print(" ").Print(name);
+            }
+
+            static void WriteParam(ref Printer p, OpType type, string name, string fieldName)
+            {
+                p.Print(name);
+
+                if (type.IsWrapper)
+                {
+                    p.Print(".").Print(fieldName);
+                }
+            }
         }
 
         private void WriteEnumOperators(
@@ -1108,7 +1212,7 @@ namespace TypeWrap.SourceGen
 
                 if (map.TryGetValue(kind, out var opReturnType) == false)
                 {
-                    opReturnType = new OpReturnType(DetermineReturnType(kind, fullTypeName), true);
+                    opReturnType = new OpType(DetermineReturnType(kind, fullTypeName), true);
                 }
 
                 var args = fieldUnderlyingSpecialType switch {
@@ -1186,75 +1290,6 @@ namespace TypeWrap.SourceGen
                 _ => string.Empty,
             };
         }
-
-        private static string GetOpArgs(
-              OperatorKind kind
-            , string fullTypeName
-            , SpecialType fieldSpecialType
-            , SpecialType fieldUnderlyingSpecialType
-        )
-        {
-            switch (kind)
-            {
-                case OperatorKind.UnaryPlus:
-                case OperatorKind.UnaryMinus:
-                case OperatorKind.Negation:
-                case OperatorKind.OnesComplement:
-                case OperatorKind.Increment:
-                case OperatorKind.Decrement:
-                case OperatorKind.True:
-                case OperatorKind.False:
-                    return $"{fullTypeName} value";
-
-                case OperatorKind.Addition:
-                {
-                    if (fieldSpecialType != SpecialType.System_Enum)
-                    {
-                        return $"{fullTypeName} left, {fullTypeName} right";
-                    }
-
-                    return fieldUnderlyingSpecialType switch {
-                        SpecialType.System_SByte => $"{fullTypeName} left, sbyte right",
-                        SpecialType.System_Byte => $"{fullTypeName} left, byte right",
-                        SpecialType.System_Int16 => $"{fullTypeName} left, short right",
-                        SpecialType.System_UInt16 => $"{fullTypeName} left, ushort right",
-                        SpecialType.System_Int32 => $"{fullTypeName} left, int right",
-                        SpecialType.System_UInt32 => $"{fullTypeName} left, uint right",
-                        SpecialType.System_Int64 => $"{fullTypeName} left, long right",
-                        SpecialType.System_UInt64 => $"{fullTypeName} left, ulong right",
-                        _ => $"{fullTypeName} left, sbyte right",
-                    };
-                }
-
-                case OperatorKind.Substraction:
-                case OperatorKind.Multiplication:
-                case OperatorKind.Division:
-                case OperatorKind.Remainder:
-                case OperatorKind.LogicalAnd:
-                case OperatorKind.LogicalOr:
-                case OperatorKind.LogicalXor:
-                case OperatorKind.BitwiseAnd:
-                case OperatorKind.BitwiseOr:
-                case OperatorKind.BitwiseXor:
-                case OperatorKind.Equal:
-                case OperatorKind.NotEqual:
-                case OperatorKind.Greater:
-                case OperatorKind.Lesser:
-                case OperatorKind.GreaterEqual:
-                case OperatorKind.LesserEqual:
-                    return $"{fullTypeName} left, {fullTypeName} right";
-
-                case OperatorKind.LeftShift:
-                case OperatorKind.RightShift:
-                case OperatorKind.UnsignedRightShift:
-                    return $"{fullTypeName} left, int count";
-
-                default:
-                    return string.Empty;
-            }
-        }
-
-
 
         private void WriteTypeConverter(ref Printer p)
         {
