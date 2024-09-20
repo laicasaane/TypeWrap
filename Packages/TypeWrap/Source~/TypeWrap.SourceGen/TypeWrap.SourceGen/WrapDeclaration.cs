@@ -37,6 +37,8 @@ namespace TypeWrap.SourceGen
 
         public bool IsSealed { get; }
 
+        public bool EnableNullable { get; }
+
         public InterfaceKind IgnoreInterfaces { get; }
 
         public OperatorKind IgnoreOperators { get; }
@@ -75,6 +77,7 @@ namespace TypeWrap.SourceGen
             , INamedTypeSymbol fieldTypeSymbol
             , string fieldName
             , bool excludeConverter
+            , bool enableNullable
         )
         {
             Syntax = syntax;
@@ -86,6 +89,7 @@ namespace TypeWrap.SourceGen
             IsStruct = isStruct;
             IsRefStruct = isRefStruct;
             IsRecord = isRecord;
+            EnableNullable = enableNullable;
             FieldTypeSymbol = fieldTypeSymbol;
             FieldName = fieldName;
             ImplementInterfaces = GetBuiltInInterfaces(fieldTypeSymbol);

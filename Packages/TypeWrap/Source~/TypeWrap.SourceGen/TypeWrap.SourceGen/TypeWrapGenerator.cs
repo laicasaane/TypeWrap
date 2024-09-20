@@ -397,6 +397,7 @@ namespace TypeWrap.SourceGen
                     , candidate.fieldTypeSymbol
                     , candidate.fieldName
                     , candidate.excludeConverter || candidate.isGeneric
+                    , compilation.Options.NullableContextOptions != NullableContextOptions.Disable
                 );
 
                 var source = declaration.WriteCode();

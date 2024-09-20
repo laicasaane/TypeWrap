@@ -9,7 +9,7 @@ namespace TypeWrap.SourceGen
         private const string AGGRESSIVE_INLINING = "[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]";
         private const string GENERATED_CODE = "[global::System.CodeDom.Compiler.GeneratedCode(\"TypeWrap.SourceGen.TypeWrapGenerator\", \"1.0.0\")]";
         private const string EXCLUDE_COVERAGE = "[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]";
-        private const string OBSOLETE = "[global::System.Obsolete(\"Not supported\", true)]";
+        private const string OBSOLETE_REF_STRUCT = "[global::System.Obsolete(\"Not supported for ref struct\")]";
 
         private SpecialMethodType _writenSpecialMethods;
 
@@ -642,11 +642,11 @@ namespace TypeWrap.SourceGen
 
             if (IsRefStruct)
             {
-                p.PrintLine(OBSOLETE);
+                p.PrintLine(OBSOLETE_REF_STRUCT);
                 p.PrintLine("public override int GetHashCode() => throw null;");
                 p.PrintEndLine();
 
-                p.PrintLine(OBSOLETE);
+                p.PrintLine(OBSOLETE_REF_STRUCT);
                 p.PrintLine("public override bool Equals(object other) => throw null;");
                 p.PrintEndLine();
             }
@@ -658,6 +658,7 @@ namespace TypeWrap.SourceGen
             var returnTypeName = method.ReturnType.ToFullName();
             var hasParams = method.Parameters.Length > 0;
             var isPublic = method.DeclaredAccessibility == Accessibility.Public;
+            var enableNullable = EnableNullable;
 
             p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
             p.PrintBeginLineIf(isPublic, "public ", "");
@@ -696,13 +697,14 @@ namespace TypeWrap.SourceGen
                 {
                     var param = propParams[i];
                     var paramTypeName = param.Type.ToFullName();
+                    var isNullable = param.NullableAnnotation == NullableAnnotation.Annotated && enableNullable;
 
                     WriteInlineAttributes(ref p, param);
                     p.PrintIf(param.RefKind == RefKind.Ref, "ref ");
                     p.PrintIf(param.RefKind == RefKind.Out, "out ");
                     p.PrintIf(param.RefKind == RefKind.In, "in ");
                     p.Print(paramTypeName);
-                    p.Print(" ");
+                    p.PrintIf(isNullable, "? ", " ");
                     p.Print(param.Name);
                     p.PrintIf(i < last, ", ");
                 }
@@ -881,12 +883,118 @@ namespace TypeWrap.SourceGen
         private void WriteInlineAttributes(ref Printer p, ISymbol symbol)
         {
             var attribs = symbol.GetAttributes();
+            var attribsLength = attribs.Length;
+            var attribLast = attribsLength - 1;
 
-            foreach (var attrib in attribs)
+            for (var i = 0; i < attribsLength; i++)
             {
-                if (attrib.AttributeClass is INamedTypeSymbol namedType)
+                var attrib = attribs[i];
+
+                if (attrib.AttributeClass is not ITypeSymbol type)
                 {
-                    p.Print("[").Print(namedType.ToFullName()).Print("]");
+                    continue;
+                }
+
+                var attribName = type.ToFullName();
+
+                if (attribName == "global::System.Runtime.CompilerServices.NullableAttribute")
+                {
+                    continue;
+                }
+
+                p.Print("[").Print(attribName).Print("(");
+
+                var constructorArgs = attrib.ConstructorArguments;
+                var length = constructorArgs.Length;
+                var last = length - 1;
+
+                for (var k = 0; k < length; k++)
+                {
+                    var arg = constructorArgs[k];
+
+                    if (IsValid(arg) == false) continue;
+
+                    WriteArgValue(ref p, arg);
+                    p.PrintIf(k < last, ", ");
+                }
+
+                var namedArgs = attrib.NamedArguments;
+
+                foreach (var item in namedArgs)
+                {
+                    var arg = item.Value;
+
+                    if (IsValid(arg) == false) continue;
+
+                    p.Print(", ").Print(item.Key).Print(": ");
+                    WriteArgValue(ref p, arg);
+                }
+
+                p.Print(")]").PrintIf(i == last, " ");
+            }
+
+            static bool IsValid(TypedConstant arg)
+            {
+                return arg.Kind != TypedConstantKind.Error
+                    && arg.Type != null;
+            }
+
+            static void WriteArgValue(ref Printer p, TypedConstant arg)
+            {
+                if (arg.IsNull)
+                {
+                    p.Print("null");
+                    return;
+                }
+
+                switch (arg.Kind)
+                {
+                    case TypedConstantKind.Primitive:
+                    {
+                        if (arg.Value is bool valBool)
+                        {
+                            p.Print(valBool ? "true" : "false");
+                        }
+                        else if (arg.Value is string valStr)
+                        {
+                            p.Print("\"").Print(valStr).Print("\"");
+                        }
+                        else
+                        {
+                            p.Print(arg.Value.ToString());
+                        }
+                        break;
+                    }
+
+                    case TypedConstantKind.Enum:
+                    {
+                        p.Print("(").Print(arg.Type.ToFullName()).Print(")").Print(arg.Value.ToString());
+                        break;
+                    }
+
+                    case TypedConstantKind.Type:
+                    {
+                        p.Print("typeof(").Print(((ITypeSymbol)arg.Value).ToFullName()).Print(")");
+                        break;
+                    }
+
+                    case TypedConstantKind.Array:
+                    {
+                        p.Print("new ").Print(arg.Type.ToFullName()).Print(" { ");
+
+                        var values = arg.Values;
+                        var length = values.Length;
+                        var last = length - 1;
+
+                        for (var i = 0; i < length; i++)
+                        {
+                            WriteArgValue(ref p, values[i]);
+                            p.PrintIf(i < last, ", ");
+                        }
+
+                        p.Print(" }");
+                        break;
+                    }
                 }
             }
         }
