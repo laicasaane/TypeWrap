@@ -34,12 +34,8 @@ namespace TypeWrapTest
     [WrapRecord]
     public readonly partial record struct HeroId(int _);
 
-    
-
     [AttributeUsage(AttributeTargets.All)]
     public sealed class MyAttribute : Attribute { }
-
-    
 
     [WrapType(typeof(List<int>))]
     public partial class ListInt { }
@@ -64,4 +60,13 @@ namespace TypeWrapTest
 
     [WrapRecord]
     public readonly partial record struct Coord2D(Vector2Int _);
+
+    public partial class OuterStruct
+    {
+        public partial record struct NestedRecord
+        {
+            [WrapRecord]
+            private partial record struct NestedWrapper(int _);
+        }
+    }
 }

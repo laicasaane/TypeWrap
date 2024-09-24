@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 // Almost everything in this file was copied from Unity's source generators.
@@ -39,7 +40,7 @@ namespace SourceGen.Common
         /// </summary>
         /// <param name="printer"></param>
         /// <returns></returns>
-        public static Printer NewLike(Printer printer) => new(printer._currentIndentIndex);
+        public static Printer NewCopy(Printer printer) => new(printer._currentIndentIndex);
 
         public Printer(int indentCount)
         {
@@ -149,6 +150,7 @@ namespace SourceGen.Common
         /// <returns></returns>
         public Printer Print(string text)
         {
+            //DebugTrace.Write(text);
             builder.Append(text);
             return this;
         }
@@ -168,13 +170,25 @@ namespace SourceGen.Common
         public Printer PrintBeginLine(string text)
             => Print(CurrentIndent).Print(text);
 
+        public Printer PrintBeginLineIf(bool condition, string trueText)
+        {
+            if (condition) PrintBeginLine(trueText);
+            return this;
+        }
+
+        public Printer PrintBeginLineIf(bool condition, string trueText, string falseText)
+        {
+            if (condition) PrintBeginLine(trueText);
+            else PrintBeginLine(falseText);
+            return this;
+        }
+
         /// <summary>
         /// Print end-line
         /// </summary>
         /// <returns></returns>
         public Printer PrintEndLine()
         {
-            //DebugTrace.WriteLine();
             builder.Append(NEWLINE);
             return this;
         }
@@ -190,6 +204,19 @@ namespace SourceGen.Common
             return this;
         }
 
+        public Printer PrintEndLineIf(bool condition, string trueText)
+        {
+            if (condition) PrintEndLine(trueText);
+            return this;
+        }
+
+        public Printer PrintEndLineIf(bool condition, string trueText, string falseText)
+        {
+            if (condition) PrintEndLine(trueText);
+            else PrintEndLine(falseText);
+            return this;
+        }
+
         /// <summary>
         /// Print indent, a string and an end-line
         /// </summary>
@@ -198,27 +225,28 @@ namespace SourceGen.Common
         public Printer PrintLine(string text)
             => PrintBeginLine().PrintEndLine(text);
 
+        public Printer PrintLine(string text, object arg1)
+            => PrintBeginLine().PrintEndLine(string.Format(text, arg1));
+
+        public Printer PrintLine(string text, object arg1, object arg2)
+            => PrintBeginLine().PrintEndLine(string.Format(text, arg1, arg2));
+
         /// <summary>
         /// Print a string if condition is truw
         /// </summary>
         /// <param name="condition"></param>
-        /// <param name="text"></param>
+        /// <param name="trueText"></param>
         /// <returns></returns>
-        public Printer PrintIf(bool condition, string text)
+        public Printer PrintIf(bool condition, string trueText)
         {
-            if (condition)
-                Print(text);
-
+            if (condition) Print(trueText);
             return this;
         }
 
         public Printer PrintIf(bool condition, string trueText, string falseText)
         {
-            if (condition)
-                Print(trueText);
-            else
-                Print(falseText);
-
+            if (condition) Print(trueText);
+            else Print(falseText);
             return this;
         }
 
@@ -226,31 +254,46 @@ namespace SourceGen.Common
         /// Print indent, a string and an end-line if a condition is true
         /// </summary>
         /// <param name="condition"></param>
-        /// <param name="text"></param>
+        /// <param name="trueText"></param>
         /// <returns></returns>
-        public Printer PrintLineIf(bool condition, string text)
+        public Printer PrintLineIf(bool condition, string trueText)
         {
-            if (condition)
-                PrintLine(text);
-
+            if (condition) PrintLine(trueText);
             return this;
         }
 
         public Printer PrintLineIf(bool condition, string trueText, string falseText)
         {
-            if (condition)
-                PrintLine(trueText);
-            else
-                PrintLine(falseText);
-
+            if (condition) PrintLine(trueText);
+            else PrintLine(falseText);
             return this;
         }
 
-        public Printer PrintBeginLineIf(bool condition, string text)
-            => Print(CurrentIndent).PrintIf(condition, text);
+        public Printer PrintLineIf(bool condition, string trueText, object trueArg1)
+        {
+            if (condition) PrintLine(trueText, trueArg1);
+            return this;
+        }
 
-        public Printer PrintBeginLineIf(bool condition, string trueText, string falseText)
-            => Print(CurrentIndent).PrintIf(condition, trueText, falseText);
+        public Printer PrintLineIf(bool condition, string trueText, object trueArg1, object trueArg2)
+        {
+            if (condition) PrintLine(trueText, trueArg1, trueArg2);
+            return this;
+        }
+
+        public Printer PrintLineIf(bool condition, string trueText, object trueArg1, string falseText, object falseArg1)
+        {
+            if (condition) PrintLine(trueText, trueArg1);
+            else PrintLine(falseText, falseArg1);
+            return this;
+        }
+
+        public Printer PrintLineIf(bool condition, string trueText, object trueArg1, object trueArg2, string falseText, object falseArg1, object falseArg2)
+        {
+            if (condition) PrintLine(trueText, trueArg1, trueArg2);
+            else PrintLine(falseText, falseArg1, falseArg2);
+            return this;
+        }
 
         #endregion
 
@@ -387,6 +430,7 @@ namespace SourceGen.Common
         /// <returns>this</returns>
         public Printer OpenScope(string scopeOpen = "{")
         {
+            //PrintEndLine();
             PrintLine(scopeOpen);
             IncreasedIndent();
             return this;
@@ -691,25 +735,48 @@ namespace SourceGen.Common
 
             switch (node)
             {
-                case NamespaceDeclarationSyntax ns:
+                case NamespaceDeclarationSyntax namespaceSyntax:
                     printer.PrintBeginLine();
-                    foreach (var m in ns.Modifiers)
+                    foreach (var m in namespaceSyntax.Modifiers)
                         printer.Print(m.ToString()).Print(" ");
-                    printer = printer.Print("namespace ").PrintEndLine(ns.Name.ToString()).PrintLine("{").WithIncreasedIndent();
+                    printer = printer.Print("namespace ")
+                        .PrintEndLine(namespaceSyntax.Name.ToString()).PrintLine("{").WithIncreasedIndent();
                     break;
-                case ClassDeclarationSyntax cl:
+
+                case InterfaceDeclarationSyntax interfaceSyntax:
                     printer.PrintBeginLine();
-                    foreach (var m in cl.Modifiers)
+                    foreach (var m in interfaceSyntax.Modifiers)
                         printer.Print(m.ToString()).Print(" ");
-                    printer = printer.Print("class ").PrintEndLine(cl.Identifier.Text).PrintLine("{").WithIncreasedIndent();
+                    printer = printer.Print("interface ")
+                        .PrintEndLine(interfaceSyntax.Identifier.Text).PrintLine("{").WithIncreasedIndent();
                     break;
-                case StructDeclarationSyntax st:
+
+                case ClassDeclarationSyntax classSyntax:
                     printer.PrintBeginLine();
-                    foreach (var m in st.Modifiers)
+                    foreach (var m in classSyntax.Modifiers)
                         printer.Print(m.ToString()).Print(" ");
-                    printer = printer.Print("struct ").PrintEndLine(st.Identifier.Text).PrintLine("{").WithIncreasedIndent();
+                    printer = printer.Print("class ")
+                        .PrintEndLine(classSyntax.Identifier.Text).PrintLine("{").WithIncreasedIndent();
+                    break;
+
+                case StructDeclarationSyntax structSyntax:
+                    printer.PrintBeginLine();
+                    foreach (var m in structSyntax.Modifiers)
+                        printer.Print(m.ToString()).Print(" ");
+                    printer = printer.Print("struct ")
+                        .PrintEndLine(structSyntax.Identifier.Text).PrintLine("{").WithIncreasedIndent();
+                    break;
+
+                case RecordDeclarationSyntax recordSyntax:
+                    printer.PrintBeginLine();
+                    foreach (var m in recordSyntax.Modifiers)
+                        printer.Print(m.ToString()).Print(" ");
+                    printer = printer.Print("record ")
+                        .PrintIf(recordSyntax.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword), "struct ", "class ")
+                        .PrintEndLine(recordSyntax.Identifier.Text).PrintLine("{").WithIncreasedIndent();
                     break;
             }
+
             return this;
         }
 
@@ -723,8 +790,10 @@ namespace SourceGen.Common
                 switch (parent)
                 {
                     case NamespaceDeclarationSyntax _:
+                    case InterfaceDeclarationSyntax _:
                     case ClassDeclarationSyntax _:
                     case StructDeclarationSyntax _:
+                    case RecordDeclarationSyntax _:
                         printer = printer.WithDecreasedIndent().PrintLine("}");
                         break;
                 }
