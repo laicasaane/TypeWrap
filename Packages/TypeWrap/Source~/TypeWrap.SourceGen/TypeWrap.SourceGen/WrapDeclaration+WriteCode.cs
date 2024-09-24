@@ -18,6 +18,10 @@ namespace TypeWrap.SourceGen
             var scopePrinter = new SyntaxNodeScopePrinter(Printer.DefaultLarge, Syntax.Parent);
             var p = scopePrinter.printer;
 
+            p.PrintEndLine();
+            p.Print("#pragma warning disable").PrintEndLine();
+            p.PrintEndLine();
+
             p = p.IncreasedIndent();
             {
                 if (ExcludeConverter == false && IsRefStruct == false)
@@ -350,7 +354,7 @@ namespace TypeWrap.SourceGen
                     ? $"this.{FieldName}"
                     : $"(({explicitTypeName})this.{FieldName})";
 
-                var accessor = property.IsStatic ? returnTypeName : fieldName;
+                var accessor = property.IsStatic ? FieldTypeName : fieldName;
 
                 if (hasParams)
                 {
