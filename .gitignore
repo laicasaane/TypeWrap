@@ -46,6 +46,9 @@ ExportedObj/
 *.VC.db
 .leu
 
+# All .DS_Store files for macOS 
+*.DS_Store
+
 # Unity3D generated meta files
 *.pidb.meta
 *.pdb.meta
