@@ -26,7 +26,7 @@ namespace TypeWrap.SourceGen
                 {
                     p.PrintBeginLine("[global::System.ComponentModel.TypeConverter(typeof(")
                         .Print(FullTypeName).Print(".")
-                        .Print(TypeNameWithTypeArgs).PrintEndLine("TypeConverter))]");
+                        .Print(TypeNameWithTypeParams).PrintEndLine("TypeConverter))]");
                 }
 
                 p.PrintBeginLine()
@@ -34,7 +34,7 @@ namespace TypeWrap.SourceGen
                     .Print("partial ")
                     .PrintIf(IsRecord, "record ")
                     .PrintIf(IsStruct, "struct ", "class ")
-                    .Print(TypeNameWithTypeArgs);
+                    .Print(TypeNameWithTypeParams);
 
                 if (IsRefStruct)
                 {
@@ -280,7 +280,6 @@ namespace TypeWrap.SourceGen
             var returnTypeName = property.typeName;
             var sameType = property.sameType;
             var hasParams = string.IsNullOrEmpty(property.parameters) == false;
-            var isPublic = property.isPublic;
             var isStatic = property.isStatic;
             var isReadOnly = property.isReadOnly;
             var refKind = property.refKind;
@@ -290,7 +289,8 @@ namespace TypeWrap.SourceGen
             var getterCanBeReadOnly = property.getterCanBeReadOnly;
 
             p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-            p.PrintBeginLineIf(isPublic, "public ", "");
+            p.PrintBeginLineIf(property.isPublic, "public ", "");
+            p.PrintIf(property.isUnsafe, "unsafe ");
             p.PrintIf(isStatic, "static ");
 
             if (refKind == RefKind.RefReadOnly)
@@ -537,10 +537,10 @@ namespace TypeWrap.SourceGen
             var methodName = method.name;
             var returnTypeName = method.returnTypeName;
             var hasParams = string.IsNullOrEmpty(method.parameters) == false;
-            var isPublic = method.isPublic;
 
             p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-            p.PrintBeginLineIf(isPublic, "public ", "");
+            p.PrintBeginLineIf(method.isPublic, "public ", "");
+            p.PrintIf(method.isUnsafe, "unsafe ");
             p.PrintIf(method.isStatic, "static ");
             p.PrintIf(IsStruct == false && method.isOverride, "override ");
             p.PrintIf(method.isReadOnly, "readonly ");
@@ -661,7 +661,7 @@ namespace TypeWrap.SourceGen
                     p.PrintLine("=> obj switch");
                     p.OpenScope();
                     {
-                        p.PrintBeginLine(TypeNameWithTypeArgs).PrintEndLine(" other => CompareTo(other),");
+                        p.PrintBeginLine(TypeNameWithTypeParams).PrintEndLine(" other => CompareTo(other),");
                         p.PrintBeginLine(FieldTypeName).Print(" other => this.").Print(FieldName).PrintEndLine(".CompareTo(other),");
                         p.PrintLine("_ => 1,");
                     }
@@ -741,7 +741,7 @@ namespace TypeWrap.SourceGen
                     p.PrintLine("=> obj switch");
                     p.OpenScope();
                     {
-                        p.PrintBeginLine(TypeNameWithTypeArgs).PrintEndLine(" other => Equals(other),");
+                        p.PrintBeginLine(TypeNameWithTypeParams).PrintEndLine(" other => Equals(other),");
                         p.PrintBeginLine(FieldTypeName).Print(" other => this.").Print(FieldName).PrintEndLine(".Equals(other),");
                         p.PrintLine("_ => false,");
                     }
@@ -1251,7 +1251,7 @@ namespace TypeWrap.SourceGen
             }
 
             p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-            p.PrintLine($"private sealed class {TypeNameWithTypeArgs}TypeConverter : global::System.ComponentModel.TypeConverter");
+            p.PrintLine($"private sealed class {TypeNameWithTypeParams}TypeConverter : global::System.ComponentModel.TypeConverter");
             p.OpenScope();
             {
                 p.PrintLine($"private static readonly global::System.Type s_wrapperType = typeof({FullTypeName});");

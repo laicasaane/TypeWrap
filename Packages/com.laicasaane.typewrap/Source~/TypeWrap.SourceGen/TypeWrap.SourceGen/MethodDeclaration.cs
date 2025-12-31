@@ -1,11 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using SourceGen.Common;
 
 namespace TypeWrap.SourceGen
 {
-    public struct MethodDeclaration
+    public struct MethodDeclaration : IEquatable<MethodDeclaration>
     {
         public string name;
         public string returnTypeName;
@@ -14,13 +15,18 @@ namespace TypeWrap.SourceGen
         public string parameters;
         public string arguments;
         public int explicitInterfaceImplementationsLength;
+        public RefKind refKind;
         public bool sameType;
         public bool isPublic;
+        public bool isUnsafe;
         public bool isOverride;
         public bool isReadOnly;
         public bool isStatic;
         public bool returnsVoid;
-        public RefKind refKind;
+
+        public readonly bool IsValid
+            => string.IsNullOrEmpty(name) == false
+            && string.IsNullOrEmpty(returnTypeName) == false;
 
         public static MethodDeclaration Create(
               IMethodSymbol method
@@ -50,6 +56,13 @@ namespace TypeWrap.SourceGen
                 typeParameterConstraints = p.Result;
             }
 
+            var isUnsafe = false;
+
+            if (method.ReturnType is IPointerTypeSymbol)
+            {
+                isUnsafe = true;
+            }
+
             if (method.Parameters.Length > 0)
             {
                 p.Clear();
@@ -71,6 +84,11 @@ namespace TypeWrap.SourceGen
                     p.PrintIf(isNullable, "? ", " ");
                     p.Print(param.Name);
                     p.PrintIf(i < last, ", ");
+
+                    if (isUnsafe == false && param.Type is IPointerTypeSymbol)
+                    {
+                        isUnsafe = true;
+                    }
                 }
 
                 parameters = p.Result;
@@ -100,6 +118,7 @@ namespace TypeWrap.SourceGen
                 parameters = parameters,
                 arguments = arguments,
                 isPublic = method.DeclaredAccessibility == Accessibility.Public,
+                isUnsafe = isUnsafe,
                 isReadOnly = method.IsReadOnly,
                 isStatic = method.IsStatic,
                 isOverride = method.IsOverride,
@@ -324,5 +343,17 @@ namespace TypeWrap.SourceGen
             }
         }
 
+        public readonly bool Equals(MethodDeclaration other)
+            => string.Equals(name, other.name, StringComparison.Ordinal)
+            && string.Equals(returnTypeName, other.returnTypeName, StringComparison.Ordinal)
+            && string.Equals(typeParameters, other.typeParameters, StringComparison.Ordinal)
+            && string.Equals(parameters, other.parameters, StringComparison.Ordinal)
+            && refKind == other.refKind;
+
+        public readonly override bool Equals(object obj)
+            => obj is MethodDeclaration other && Equals(other);
+
+        public readonly override int GetHashCode()
+            => HashValue.Combine(name, returnTypeName, typeParameters, parameters, refKind);
     }
 }

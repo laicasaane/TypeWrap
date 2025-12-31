@@ -15,19 +15,9 @@ namespace TypeWrap.SourceGen
 
         public TypeDeclarationSyntax Syntax { get; }
 
-        public bool IsRecord { get; }
-
-        public bool IsStruct { get; }
-
-        public bool IsRefStruct { get; }
-
-        public bool FieldTypeIsInterface { get; }
-
-        public bool ExcludeConverter { get; }
-
         public string TypeName { get; }
 
-        public string TypeNameWithTypeArgs { get; }
+        public string TypeNameWithTypeParams { get; }
 
         public string TypeNameIndentifier { get; }
 
@@ -37,17 +27,7 @@ namespace TypeWrap.SourceGen
 
         public string FieldEnumUnderlyingTypeName { get; }
 
-        public bool IsFieldDeclared { get; }
-
-        public bool IsFieldEnum { get; }
-
-        public bool IsReadOnly { get; }
-
-        public bool FieldTypeIsReadOnly { get; }
-
-        public bool IsSealed { get; }
-
-        public bool EnableNullable { get; }
+        public string FieldName { get; }
 
         public InterfaceKind IgnoreInterfaceMethods { get; }
 
@@ -63,15 +43,35 @@ namespace TypeWrap.SourceGen
 
         public SpecialType FieldUnderlyingSpecialType { get; }
 
-        public string FieldName { get; }
+        public bool IsRecord { get; }
 
-        public ImmutableArray<FieldDeclaration> Fields { get; }
+        public bool IsStruct { get; }
 
-        public ImmutableArray<PropertyDeclaration> Properties { get; }
+        public bool IsRefStruct { get; }
 
-        public ImmutableArray<EventDeclaration> Events { get; }
+        public bool FieldTypeIsInterface { get; }
 
-        public ImmutableArray<MethodDeclaration> Methods { get; }
+        public bool ExcludeConverter { get; }
+
+        public bool IsFieldDeclared { get; }
+
+        public bool IsFieldEnum { get; }
+
+        public bool IsReadOnly { get; }
+
+        public bool FieldTypeIsReadOnly { get; }
+
+        public bool IsSealed { get; }
+
+        public bool EnableNullable { get; }
+
+        public EquatableArray<FieldDeclaration> Fields { get; }
+
+        public EquatableArray<PropertyDeclaration> Properties { get; }
+
+        public EquatableArray<EventDeclaration> Events { get; }
+
+        public EquatableArray<MethodDeclaration> Methods { get; }
 
         public Dictionary<OperatorKind, HashSet<Operator>> OperatorMap { get; }
 
@@ -84,7 +84,7 @@ namespace TypeWrap.SourceGen
               TypeDeclarationSyntax syntax
             , INamedTypeSymbol symbol
             , string typeName
-            , string typeNameWithTypeArgs
+            , string typeNameWithTypeParams
             , bool isStruct
             , bool isRefStruct
             , bool isRecord
@@ -101,7 +101,7 @@ namespace TypeWrap.SourceGen
 
             Syntax = syntax;
             TypeName = typeName;
-            TypeNameWithTypeArgs = typeNameWithTypeArgs;
+            TypeNameWithTypeParams = typeNameWithTypeParams;
             TypeNameIndentifier = symbol.ToValidIdentifier();
             FullTypeName = symbol.ToFullName();
             IsReadOnly = symbol.IsReadOnly;
@@ -382,8 +382,8 @@ namespace TypeWrap.SourceGen
                             }
 
                             var returnType = GetOpType(
-                        method.ReturnType, fieldTypeSymbol, fullTypeName, RetainReturnType(foundOp)
-                    );
+                                method.ReturnType, fieldTypeSymbol, fullTypeName, RetainReturnType(foundOp)
+                            );
 
                             var methodParams = method.Parameters;
                             var methodParamsLength = methodParams.Length;
@@ -879,11 +879,19 @@ namespace TypeWrap.SourceGen
         public readonly bool Equals(TypeWrapDeclaration other)
             => string.Equals(FullTypeName, other.FullTypeName, StringComparison.Ordinal)
             && string.Equals(FieldTypeName, other.FieldTypeName, StringComparison.Ordinal)
+            && string.Equals(FieldEnumUnderlyingTypeName, other.FieldEnumUnderlyingTypeName, StringComparison.Ordinal)
             && string.Equals(FieldName, other.FieldName, StringComparison.Ordinal)
+            && ExcludeConverter == other.ExcludeConverter
             ;
 
         public readonly override int GetHashCode()
-            => HashValue.Combine(FullTypeName, FieldTypeName, FieldName);
+            => HashValue.Combine(
+                  FullTypeName
+                , FieldTypeName
+                , FieldEnumUnderlyingTypeName
+                , FieldName
+                , ExcludeConverter
+            );
 
         public readonly struct Operator : IEquatable<Operator>
         {

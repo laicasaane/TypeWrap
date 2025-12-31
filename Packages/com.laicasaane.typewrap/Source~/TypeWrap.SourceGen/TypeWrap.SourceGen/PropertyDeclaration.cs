@@ -1,15 +1,17 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System;
+using Microsoft.CodeAnalysis;
 using SourceGen.Common;
 
 namespace TypeWrap.SourceGen
 {
-    public struct PropertyDeclaration
+    public struct PropertyDeclaration : IEquatable<PropertyDeclaration>
     {
         public string name;
         public string typeName;
         public string parameters;
         public string arguments;
         public int explicitInterfaceImplementationsLength;
+        public RefKind refKind;
         public bool sameType;
         public bool isPublic;
         public bool isReadOnly;
@@ -24,7 +26,11 @@ namespace TypeWrap.SourceGen
         public bool hasSetter;
         public bool isSetterRO;
         public bool withoutSetter;
-        public RefKind refKind;
+        public bool isUnsafe;
+
+        public readonly bool IsValid
+            => string.IsNullOrEmpty(name) == false
+            && string.IsNullOrEmpty(typeName) == false;
 
         public static PropertyDeclaration Create(
               IPropertySymbol property
@@ -88,7 +94,7 @@ namespace TypeWrap.SourceGen
 
             bool hasSetter = default;
             bool isSetterRO = default;
-            bool withoutSetter = default;
+            bool withoutSetter;
 
             if (property.SetMethod is IMethodSymbol setter)
             {
@@ -123,8 +129,21 @@ namespace TypeWrap.SourceGen
                 isGetterRO = isGetterRO,
                 hasSetter = hasSetter,
                 isSetterRO = isSetterRO,
+                isUnsafe = property.Type is IPointerTypeSymbol,
                 withoutSetter = withoutSetter,
             };
         }
+
+        public readonly bool Equals(PropertyDeclaration other)
+            => string.Equals(name, other.name, StringComparison.Ordinal)
+            && string.Equals(typeName, other.typeName, StringComparison.Ordinal)
+            && string.Equals(parameters, other.parameters, StringComparison.Ordinal)
+            && refKind == other.refKind;
+
+        public readonly override bool Equals(object obj)
+            => obj is PropertyDeclaration other && Equals(other);
+
+        public readonly override int GetHashCode()
+            => HashValue.Combine(name, typeName, parameters, refKind);
     }
 }

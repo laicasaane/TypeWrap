@@ -1,9 +1,10 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System;
+using Microsoft.CodeAnalysis;
 using SourceGen.Common;
 
 namespace TypeWrap.SourceGen
 {
-    public struct FieldDeclaration
+    public struct FieldDeclaration : IEquatable<FieldDeclaration>
     {
         public string name;
         public string typeName;
@@ -11,6 +12,10 @@ namespace TypeWrap.SourceGen
         public bool isConst;
         public bool isStatic;
         public bool isReadOnly;
+
+        public readonly bool IsValid
+            => string.IsNullOrEmpty(name) == false
+            && string.IsNullOrEmpty(typeName) == false;
 
         public static FieldDeclaration Create(IFieldSymbol field, INamedTypeSymbol fieldTypeSymbol)
         {
@@ -23,5 +28,15 @@ namespace TypeWrap.SourceGen
                 isReadOnly = field.IsReadOnly,
             };
         }
+
+        public readonly bool Equals(FieldDeclaration other)
+            => string.Equals(name, other.name, StringComparison.Ordinal)
+            && string.Equals(typeName, other.typeName, StringComparison.Ordinal);
+
+        public readonly override bool Equals(object obj)
+            => obj is FieldDeclaration other && Equals(other);
+
+        public readonly override int GetHashCode()
+            => HashValue.Combine(name, typeName);
     }
 }
