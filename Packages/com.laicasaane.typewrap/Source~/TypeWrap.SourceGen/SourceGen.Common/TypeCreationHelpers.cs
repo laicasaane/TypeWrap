@@ -26,81 +26,6 @@ namespace SourceGen.Common
         public const string NEWLINE = "\n";
 
         /// <summary>
-        /// Generates the SourceText from a given list of root nodes using the SyntaxTree's path.
-        /// Includes the existing SyntaxTree's root using statements,
-        /// and adds correct line directives.
-        /// </summary>
-        /// <param name="generatorName">Name to base filepath on.</param>
-        /// <param name="generatorExecutionContext">Context of the generator executed.</param>
-        /// <param name="originalSyntaxTree">Original SyntaxTree to base SourceText location and usings on.</param>
-        /// <param name="rootNodes">Root nodes to add to compilation unit.</param>
-        /// <returns>The SourceText based on nodes and SyntaxTree filepath.</returns>
-        public static SourceText GenerateSourceTextForRootNodes(
-              string generatorName
-            , GeneratorExecutionContext generatorExecutionContext
-            , SyntaxTree originalSyntaxTree
-            , IEnumerable<MemberDeclarationSyntax> rootNodes
-        )
-        {
-            // Create compilation unit
-            var existingUsings = originalSyntaxTree
-                .GetCompilationUnitRoot(generatorExecutionContext.CancellationToken)
-                .WithoutPreprocessorTrivia().Usings;
-
-            var compilationUnit = SyntaxFactory.CompilationUnit()
-                .AddMembers(rootNodes.ToArray())
-                .WithoutPreprocessorTrivia()
-                .WithUsings(existingUsings)
-                .NormalizeWhitespace(eol:NEWLINE);
-
-            var generatedSourceFilePath = originalSyntaxTree
-                .GetGeneratedSourceFilePath(generatorExecutionContext.Compilation.Assembly.Name, generatorName)
-                .Replace('\\', '/');
-
-            // Output as source
-            return compilationUnit.GetText(Encoding.UTF8)
-                .WithIgnoreUnassignedVariableWarning()
-                .WithInitialLineDirectiveToGeneratedSource(generatedSourceFilePath)
-                ;
-        }
-
-        /// <summary>
-        /// Get root nodes of a replaced SyntaxTree.
-        /// Where all the original nodes in dictionary is replaced with new nodes.
-        /// </summary>
-        /// <param name="syntaxTree">SyntaxTree to look through.</param>
-        /// <param name="originalToReplaced">Dictionary containing keys of original nodes, and values of replacements.</param>
-        /// <returns>Root nodes of replaced SyntaxTrees.</returns>
-        public static List<MemberDeclarationSyntax> GetReplacedRootNodes(
-              SyntaxTree syntaxTree
-            , IDictionary<TypeDeclarationSyntax, TypeDeclarationSyntax> originalToReplaced
-        )
-        {
-            var newRootNodes = new List<MemberDeclarationSyntax>();
-            var allOriginalNodesAlsoInReplacedTree = originalToReplaced.Keys
-                .SelectMany(node => node.AncestorsAndSelf())
-                .ToImmutableHashSet();
-
-            foreach (var childNode in syntaxTree.GetRoot().ChildNodes())
-            {
-                switch (childNode)
-                {
-                    case BaseNamespaceDeclarationSyntax _:
-                    case ClassDeclarationSyntax _:
-                    case StructDeclarationSyntax _:
-                    {
-                        var newRootNode = ConstructReplacedTree(childNode, originalToReplaced, allOriginalNodesAlsoInReplacedTree);
-                        if (newRootNode != null)
-                            newRootNodes.Add(newRootNode);
-                        break;
-                    }
-                }
-            }
-
-            return newRootNodes;
-        }
-
-        /// <summary>
         /// Constructs a replaced tree based on a root note.
         /// Uses originalToReplacedNode to replace.
         /// Filtered based on replacementNodeCandidates.
@@ -173,10 +98,10 @@ namespace SourceGen.Common
         public static SourceText GenerateSourceTextForRootNodes(
               string generatedSourceFilePath
             , SyntaxNode containingSyntax
-            , SyntaxNode originalSyntax
-            , string generatedSyntax
+            , string bodySource
             , CancellationToken cancellationToken
             , Printer? overridePrinter = default
+            , PrinterAction printAdditionalUsings = default
         )
         {
             // DO NOT worry about #if directives
@@ -189,11 +114,11 @@ namespace SourceGen.Common
             var result = WriteOpeningSyntax_AndReturnClosingSyntax(
                   ref printer
                 , containingSyntax
-                , originalSyntax
                 , cancellationToken
+                , printAdditionalUsings
             );
 
-            printer.PrintLine(generatedSyntax);
+            printer.PrintLine(bodySource);
 
             var numClosingBraces = result.NumClosingBraces;
 
@@ -215,11 +140,75 @@ namespace SourceGen.Common
                 ;
         }
 
+        public static SourceText GenerateSourceText(
+              string generatedSourceFilePath
+            , string openingSource
+            , string bodySource
+            , string closingSource
+            , Printer? overridePrinter = default
+        )
+        {
+            // DO NOT worry about #if directives
+            // Because source generators run after preprocessors,
+            // every disabled code will be removed from the compilation context.
+            // So there might be no generated code to worry about.
+
+            var printer = overridePrinter ?? Printer.DefaultLarge;
+
+            printer.PrintLine(openingSource);
+            printer.PrintLine(bodySource);
+            printer.PrintLine(closingSource);
+
+            // Output as source
+            return SourceText.From(printer.Result, Encoding.UTF8)
+                .WithIgnoreUnassignedVariableWarning()
+                .WithInitialLineDirectiveToGeneratedSource(generatedSourceFilePath)
+                ;
+        }
+
+        public static void GenerateOpeningAndClosingSource(
+              SyntaxNode containingSyntax
+            , CancellationToken cancellationToken
+            , out string openingSource
+            , out string closingSource
+            , Printer? overridePrinter = default
+            , PrinterAction printAdditionalUsings = default
+        )
+        {
+            var printer = overridePrinter ?? Printer.DefaultLarge;
+
+            var result = WriteOpeningSyntax_AndReturnClosingSyntax(
+                  ref printer
+                , containingSyntax
+                , cancellationToken
+                , printAdditionalUsings
+            );
+
+            openingSource = printer.Result;
+
+            printer.ClearAndIndent(printer.IndentDepth);
+
+            var numClosingBraces = result.NumClosingBraces;
+
+            if (numClosingBraces > 0)
+            {
+                printer.PrintEndLine();
+            }
+
+            for (int i = 0; i < numClosingBraces; i++)
+            {
+                printer = printer.DecreasedIndent();
+                printer.PrintLine("}");
+            }
+
+            closingSource = printer.Result;
+        }
+
         private static ClosingSyntax WriteOpeningSyntax_AndReturnClosingSyntax(
               ref Printer printer
             , SyntaxNode containingTypeSyntax
-            , SyntaxNode originalSyntax
             , CancellationToken cancellationToken
+            , PrinterAction printAdditionUsings
         )
         {
             var (openingSyntaxes, numClosingBraces) = GetOpeningSyntaxes(containingTypeSyntax);
@@ -235,6 +224,8 @@ namespace SourceGen.Common
             {
                 printer.PrintLine(@using.ToString());
             }
+
+            printAdditionUsings?.Invoke(ref printer);
 
             if (usings.Count > 0)
             {

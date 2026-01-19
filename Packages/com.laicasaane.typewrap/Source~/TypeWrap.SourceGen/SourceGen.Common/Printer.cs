@@ -24,6 +24,8 @@ namespace SourceGen.Common
         void Print(Printer printer);
     }
 
+    public delegate void PrinterAction(ref Printer printer);
+
     public struct Printer
     {
         public const string NEWLINE = "\n";
@@ -144,6 +146,138 @@ namespace SourceGen.Common
         #region printing
 
         /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(bool value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(sbyte value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(byte value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(char value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(short value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(ushort value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(int value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(uint value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(float value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(double value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(long value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a value
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public Printer Print(ulong value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>
         /// Print a string
         /// </summary>
         /// <param name="text"></param>
@@ -151,6 +285,21 @@ namespace SourceGen.Common
         public Printer Print(string text)
         {
             _builder.Append(text);
+            return this;
+        }
+
+        /// <summary>
+        /// Print a string
+        /// </summary>
+        /// <param name="ch"></param>
+        /// <returns></returns>
+        public Printer PrintRepeat(char ch, int repeatCount)
+        {
+            if (repeatCount > 0)
+            {
+                _builder.Append(ch, repeatCount);
+            }
+
             return this;
         }
 
@@ -309,7 +458,7 @@ namespace SourceGen.Common
             , [System.Runtime.CompilerServices.CallerMemberName] string m = default
             , [System.Runtime.CompilerServices.CallerFilePath] string f = default
 #endif
-)
+        )
         {
 #if DEBUG
             PrintLine($"// [{l}] :: {m} :: {f}");

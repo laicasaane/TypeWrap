@@ -287,6 +287,9 @@ namespace SourceGen.Common
         public static string ToValidIdentifier(this ITypeSymbol symbol)
             => symbol.ToDisplayString(QualifiedFormatWithoutGlobalPrefix).ToValidIdentifier();
 
+        public static string ToFileName(this ITypeSymbol symbol)
+            => symbol.ToDisplayString(QualifiedFormatWithoutGlobalPrefix).ToFileName();
+
         public static string ToSimpleValidIdentifier(this ITypeSymbol symbol)
             => symbol.ToDisplayString(SimpleFormat).ToValidIdentifier();
 

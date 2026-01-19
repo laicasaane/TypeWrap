@@ -5,16 +5,16 @@ namespace TypeWrap.SourceGen
 {
     partial struct TypeWrapDeclaration
     {
-        private const string AGGRESSIVE_INLINING = "[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]";
-        private const string GENERATED_CODE = $"[global::System.CodeDom.Compiler.GeneratedCode(\"TypeWrap.SourceGen.TypeWrapGenerator\", \"{SourceGenVersion.VALUE}\")]";
-        private const string EXCLUDE_COVERAGE = "[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]";
-        private const string OBSOLETE_REF_STRUCT = "[global::System.Obsolete(\"Not supported for ref struct\")]";
-        private const string IWRAP = "global::TypeWrap.IWrap<";
+        public const string GENERATED_CODE = $"[GeneratedCode(GENERATOR, \"{SourceGenVersion.VALUE}\")]";
+        public const string EXCLUDE_COVERAGE = "[ExcludeFromCodeCoverage]";
+        public const string AGGRESSIVE_INLINING = "[MethodImpl(MethodImplOptions.AggressiveInlining)]";
+        public const string GENERATOR = "\"TypeWrap.SourceGen.TypeWrapGenerator\"";
+        private const string OBSOLETE_REF_STRUCT = "[Obsolete(\"Not supported for ref struct\")]";
+        private const string IWRAP = "IWrap<";
 
         public readonly string WriteCode()
         {
-            var scopePrinter = new SyntaxNodeScopePrinter(Printer.DefaultLarge, Syntax.Parent);
-            var p = scopePrinter.printer;
+            var p = new Printer(0, 1024 * 512);
 
             p.PrintEndLine();
             p.Print("#pragma warning disable").PrintEndLine();
@@ -24,11 +24,12 @@ namespace TypeWrap.SourceGen
             {
                 if (ExcludeConverter == false && IsRefStruct == false)
                 {
-                    p.PrintBeginLine("[global::System.ComponentModel.TypeConverter(typeof(")
+                    p.PrintBeginLine("[TypeConverter(typeof(")
                         .Print(FullTypeName).Print(".")
                         .Print(TypeNameWithTypeParams).PrintEndLine("TypeConverter))]");
                 }
 
+                p.PrintBeginLine(GENERATED_CODE).PrintEndLine(EXCLUDE_COVERAGE);
                 p.PrintBeginLine()
                     .PrintIf(IsRefStruct, "ref ")
                     .Print("partial ")
@@ -66,6 +67,22 @@ namespace TypeWrap.SourceGen
                     WriteTypeConverter(ref p);
                 }
                 p.CloseScope();
+
+                p.Print("#region INTERNALS").PrintEndLine();
+                p.Print("#endregion ======").PrintEndLine();
+                p.PrintEndLine();
+
+                p.PrintBeginLine("partial ")
+                    .PrintIf(IsRecord, "record ")
+                    .PrintIf(IsStruct, "struct ", "class ")
+                    .Print(TypeNameWithTypeParams)
+                    .PrintEndLine(" // Internals");
+                p.OpenScope();
+                {
+                    WriteHelpers(ref p);
+                }
+                p.CloseScope();
+                p.PrintEndLine();
             }
             p = p.DecreasedIndent();
 
@@ -78,23 +95,23 @@ namespace TypeWrap.SourceGen
 
             if (ImplementInterfaces.HasFlag(InterfaceKind.EquatableT))
             {
-                p.PrintBeginLine(", ").Print("global::System.IEquatable<").Print(FullTypeName).PrintEndLine(">");
-                p.PrintBeginLine(", ").Print("global::System.IEquatable<").Print(FieldTypeName).PrintEndLine(">");
+                p.PrintBeginLine(", ").Print("IEquatable<").Print(FullTypeName).PrintEndLine(">");
+                p.PrintBeginLine(", ").Print("IEquatable<").Print(FieldTypeName).PrintEndLine(">");
             }
 
             var hasCompareToT = ImplementInterfaces.HasFlag(InterfaceKind.ComparableT);
             var hasCompareTo = ImplementInterfaces.HasFlag(InterfaceKind.Comparable)
-        && ImplementSpecialMethods.HasFlag(SpecialMethodType.CompareTo);
+            && ImplementSpecialMethods.HasFlag(SpecialMethodType.CompareTo);
 
             if (hasCompareToT || hasCompareTo)
             {
-                p.PrintBeginLine(", ").PrintEndLine("global::System.IComparable");
+                p.PrintBeginLine(", ").PrintEndLine("IComparable");
             }
 
             if (ImplementInterfaces.HasFlag(InterfaceKind.ComparableT))
             {
-                p.PrintBeginLine(", ").Print("global::System.IComparable<").Print(FullTypeName).PrintEndLine(">");
-                p.PrintBeginLine(", ").Print("global::System.IComparable<").Print(FieldTypeName).PrintEndLine(">");
+                p.PrintBeginLine(", ").Print("IComparable<").Print(FullTypeName).PrintEndLine(">");
+                p.PrintBeginLine(", ").Print("IComparable<").Print(FieldTypeName).PrintEndLine(">");
             }
 
             p = p.DecreasedIndent();
@@ -107,7 +124,6 @@ namespace TypeWrap.SourceGen
                 return;
             }
 
-            p.PrintLine(GENERATED_CODE);
             p.PrintBeginLine("public ")
                 .PrintIf(IsReadOnly || IsStruct == false, "readonly ")
                 .Print(FieldTypeName)
@@ -119,7 +135,7 @@ namespace TypeWrap.SourceGen
 
         private readonly void WritePrimaryConstructor(ref Printer p)
         {
-            p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+            p.PrintLine(AGGRESSIVE_INLINING);
             p.PrintBeginLine($"public {TypeName}({FieldTypeName} value)");
             p.PrintEndLineIf(IsStruct, " : this()", "");
             p.OpenScope();
@@ -148,12 +164,10 @@ namespace TypeWrap.SourceGen
             {
                 if (sameType)
                 {
-                    p.PrintLine(GENERATED_CODE);
                     p.PrintLine($"public static readonly {FullTypeName} {name} = new {FullTypeName}({FieldTypeName}.{name});");
                 }
                 else
                 {
-                    p.PrintLine(GENERATED_CODE);
                     p.PrintLine($"public const {returnTypeName} {name} = {FieldTypeName}.{name};");
                 }
             }
@@ -161,46 +175,42 @@ namespace TypeWrap.SourceGen
             {
                 if (field.isReadOnly && sameType)
                 {
-                    p.PrintLine(GENERATED_CODE);
                     p.PrintLine($"public static readonly {FullTypeName} {name} = new {FullTypeName}({FieldTypeName}.{name});");
                 }
                 else if (field.isReadOnly)
                 {
-                    p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
                     p.PrintLine($"public static {returnTypeName} {name}");
                     p.OpenScope();
                     {
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"get => {FieldTypeName}.{name};");
                     }
                     p.CloseScope();
                 }
                 else if (sameType)
                 {
-                    p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
                     p.PrintLine($"public static {FullTypeName} {name}");
                     p.OpenScope();
                     {
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"get => new {FullTypeName}({FieldTypeName}.{name});");
                         p.PrintEndLine();
 
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"set => {FieldTypeName}.{name} = value.{FieldName};");
                     }
                     p.CloseScope();
                 }
                 else
                 {
-                    p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
                     p.PrintLine($"public static {returnTypeName} {name}");
                     p.OpenScope();
                     {
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"get => {FieldTypeName}.{name};");
                         p.PrintEndLine();
 
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"set => {FieldTypeName}.{name} = value;");
                     }
                     p.CloseScope();
@@ -212,46 +222,42 @@ namespace TypeWrap.SourceGen
 
                 if (isReadOnly && sameType)
                 {
-                    p.PrintLine(GENERATED_CODE);
                     p.PrintLine($"public readonly {FullTypeName} {name} = new {FullTypeName}(this.{FieldName}.{name});");
                 }
                 else if (isReadOnly)
                 {
-                    p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
                     p.PrintLine($"public {returnTypeName} {name}");
                     p.OpenScope();
                     {
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"get => this.{FieldName}.{name};");
                     }
                     p.CloseScope();
                 }
                 else if (sameType)
                 {
-                    p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
                     p.PrintLine($"public {FullTypeName} {name}");
                     p.OpenScope();
                     {
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"get => new {FullTypeName}(this.{FieldName}.{name});");
                         p.PrintEndLine();
 
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"set => this.{FieldName}.{name} = value.{FieldName};");
                     }
                     p.CloseScope();
                 }
                 else
                 {
-                    p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
                     p.PrintLine($"public {returnTypeName} {name}");
                     p.OpenScope();
                     {
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"get => this.{FieldName}.{name};");
                         p.PrintEndLine();
 
-                        p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE).PrintLine(AGGRESSIVE_INLINING);
+                        p.PrintLine(AGGRESSIVE_INLINING);
                         p.PrintLine($"set => this.{FieldName}.{name} = value;");
                     }
                     p.CloseScope();
@@ -288,7 +294,6 @@ namespace TypeWrap.SourceGen
             var getterSetterCanBeReadOnly = property.getterSetterCanBeReadOnly;
             var getterCanBeReadOnly = property.getterCanBeReadOnly;
 
-            p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
             p.PrintBeginLineIf(property.isPublic, "public ", "");
             p.PrintIf(property.isUnsafe, "unsafe ");
             p.PrintIf(isStatic, "static ");
@@ -333,8 +338,8 @@ namespace TypeWrap.SourceGen
             p.OpenScope();
             {
                 var fieldName = string.IsNullOrEmpty(explicitTypeName)
-            ? $"this.{FieldName}"
-            : $"(({explicitTypeName})this.{FieldName})";
+                ? $"this.{FieldName}"
+                : $"(({explicitTypeName})this.{FieldName})";
 
                 var accessor = isStatic ? FieldTypeName : fieldName;
 
@@ -481,7 +486,6 @@ namespace TypeWrap.SourceGen
             var returnTypeName = evt.typeName;
             var isPublic = evt.isPublic;
 
-            p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
             p.PrintBeginLineIf(isPublic, "public ", "");
             p.PrintIf(evt.isStatic, "static ");
             p.Print("event ");
@@ -495,8 +499,8 @@ namespace TypeWrap.SourceGen
             p.OpenScope();
             {
                 var fieldName = string.IsNullOrEmpty(explicitTypeName)
-            ? $"this.{FieldName}"
-            : $"(({explicitTypeName})this.{FieldName})";
+                ? $"this.{FieldName}"
+                : $"(({explicitTypeName})this.{FieldName})";
 
                 var accessor = evt.isStatic ? returnTypeName : fieldName;
 
@@ -538,7 +542,7 @@ namespace TypeWrap.SourceGen
             var returnTypeName = method.returnTypeName;
             var hasParams = string.IsNullOrEmpty(method.parameters) == false;
 
-            p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+            p.PrintLine(AGGRESSIVE_INLINING);
             p.PrintBeginLineIf(method.isPublic, "public ", "");
             p.PrintIf(method.isUnsafe, "unsafe ");
             p.PrintIf(method.isStatic, "static ");
@@ -606,13 +610,13 @@ namespace TypeWrap.SourceGen
         private readonly void WriteAdditionalMethods(ref Printer p, SpecialMethodType writtenSpecialMethods)
         {
             var hasCompareToT = IgnoreInterfaceMethods.HasFlag(InterfaceKind.ComparableT) == false
-        && ImplementInterfaces.HasFlag(InterfaceKind.ComparableT);
+            && ImplementInterfaces.HasFlag(InterfaceKind.ComparableT);
 
             if (hasCompareToT)
             {
                 if (IsFieldEnum)
                 {
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ", "virtual ")
                         .Print("int CompareTo(").Print(FieldTypeName).PrintEndLine(" other)");
                     p = p.IncreasedIndent();
@@ -624,7 +628,7 @@ namespace TypeWrap.SourceGen
                     p = p.DecreasedIndent();
                     p.PrintEndLine();
 
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ", "virtual ")
                         .Print("int CompareTo(").Print(FullTypeName).PrintEndLine(" other)");
                     p = p.IncreasedIndent();
@@ -636,7 +640,7 @@ namespace TypeWrap.SourceGen
                 }
                 else
                 {
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ", "virtual ")
                         .Print("int CompareTo(").Print(FullTypeName).PrintEndLine(" other)");
                     p = p.IncreasedIndent();
@@ -649,12 +653,12 @@ namespace TypeWrap.SourceGen
             }
 
             var hasCompareTo = IgnoreInterfaceMethods.HasFlag(InterfaceKind.Comparable) == false
-        && ImplementInterfaces.HasFlag(InterfaceKind.Comparable)
-        && ImplementSpecialMethods.HasFlag(SpecialMethodType.CompareTo);
+            && ImplementInterfaces.HasFlag(InterfaceKind.Comparable)
+            && ImplementSpecialMethods.HasFlag(SpecialMethodType.CompareTo);
 
             if ((hasCompareToT || hasCompareTo) && IsRefStruct == false)
             {
-                p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                p.PrintLine(AGGRESSIVE_INLINING);
                 p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ").PrintEndLine("int CompareTo(object obj)");
                 p = p.IncreasedIndent();
                 {
@@ -683,7 +687,7 @@ namespace TypeWrap.SourceGen
             {
                 if (IsFieldEnum)
                 {
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ", "virtual ")
                         .Print("bool Equals(").Print(FieldTypeName).PrintEndLine(" other)");
                     p = p.IncreasedIndent();
@@ -693,7 +697,7 @@ namespace TypeWrap.SourceGen
                     p = p.DecreasedIndent();
                     p.PrintEndLine();
 
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ", "virtual ")
                         .Print("bool Equals(").Print(FullTypeName).PrintEndLine(" other)");
                     p = p.IncreasedIndent();
@@ -705,7 +709,7 @@ namespace TypeWrap.SourceGen
                 }
                 else
                 {
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ", "virtual ")
                         .Print("bool Equals(").Print(FullTypeName).PrintEndLine(" other)");
                     p = p.IncreasedIndent();
@@ -725,8 +729,8 @@ namespace TypeWrap.SourceGen
             }
 
             var hasEquals = IgnoreInterfaceMethods.HasFlag(InterfaceKind.EquatableT)
-        || ImplementOperators.HasFlag(OperatorKind.Equal)
-        || ImplementInterfaces.HasFlag(InterfaceKind.EquatableT);
+            || ImplementOperators.HasFlag(OperatorKind.Equal)
+            || ImplementInterfaces.HasFlag(InterfaceKind.EquatableT);
 
             if (IsRecord == false
                 && hasEquals
@@ -734,7 +738,7 @@ namespace TypeWrap.SourceGen
                 && IsRefStruct == false
             )
             {
-                p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                p.PrintLine(AGGRESSIVE_INLINING);
                 p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ").PrintEndLine("override bool Equals(object obj)");
                 p = p.IncreasedIndent();
                 {
@@ -758,7 +762,7 @@ namespace TypeWrap.SourceGen
             {
                 if (IsFieldEnum)
                 {
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ").PrintEndLine("override int GetHashCode()");
                     p = p.IncreasedIndent();
                     {
@@ -770,7 +774,7 @@ namespace TypeWrap.SourceGen
                 }
                 else
                 {
-                    p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                    p.PrintLine(AGGRESSIVE_INLINING);
                     p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ").PrintEndLine("override int GetHashCode()");
                     p = p.IncreasedIndent();
                     {
@@ -786,7 +790,7 @@ namespace TypeWrap.SourceGen
                 && IsRefStruct == false
             )
             {
-                p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                p.PrintLine(AGGRESSIVE_INLINING);
                 p.PrintBeginLine("public ").PrintIf(IsStruct, "readonly ").PrintEndLine("override string ToString()");
                 p = p.IncreasedIndent();
                 {
@@ -815,7 +819,7 @@ namespace TypeWrap.SourceGen
                 return;
             }
 
-            p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+            p.PrintLine(AGGRESSIVE_INLINING);
             p.PrintBeginLine("public static ").PrintIf(IsStruct, "implicit", "explicit")
                 .Print(" operator ").Print(FullTypeName)
                 .Print("(").Print(FieldTypeName).PrintEndLine(" value)");
@@ -826,7 +830,7 @@ namespace TypeWrap.SourceGen
             p = p.DecreasedIndent();
             p.PrintEndLine();
 
-            p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+            p.PrintLine(AGGRESSIVE_INLINING);
             p.PrintBeginLine("public static implicit operator ").Print(FieldTypeName)
                 .Print("(").Print(FullTypeName).PrintEndLine(" value)");
             p = p.IncreasedIndent();
@@ -918,7 +922,7 @@ namespace TypeWrap.SourceGen
 
             var op = GetOp(kind);
 
-            p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+            p.PrintLine(AGGRESSIVE_INLINING);
             p.PrintBeginLine("public static ").Print(opReturnType.Value).Print(" operator ").Print(op).Print("(");
             WriteArgs(ref p, opArgTypes);
             p.PrintEndLine(")");
@@ -1177,7 +1181,7 @@ namespace TypeWrap.SourceGen
                     _ => $"{fullTypeName} left, sbyte right",
                 };
 
-                p.PrintLine(AGGRESSIVE_INLINING).PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
+                p.PrintLine(AGGRESSIVE_INLINING);
                 p.PrintBeginLine("public static ").Print(opReturnType.Value).Print(" operator ").Print(op)
                     .Print("(").Print(args).PrintEndLine(")");
                 p.OpenScope();
@@ -1250,17 +1254,17 @@ namespace TypeWrap.SourceGen
                 return;
             }
 
-            p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-            p.PrintLine($"private sealed class {TypeNameWithTypeParams}TypeConverter : global::System.ComponentModel.TypeConverter");
+            p.PrintBeginLine(GENERATED_CODE).PrintEndLine(EXCLUDE_COVERAGE);
+            p.PrintLine($"private sealed class {TypeNameWithTypeParams}TypeConverter : TypeConverter");
             p.OpenScope();
             {
-                p.PrintLine($"private static readonly global::System.Type s_wrapperType = typeof({FullTypeName});");
-                p.PrintLine($"private static readonly global::System.Type s_underlyingType = typeof({FieldTypeName});");
+                p.PrintLine($"private static readonly Type s_wrapperType = typeof({FullTypeName});");
+                p.PrintLine($"private static readonly Type s_underlyingType = typeof({FieldTypeName});");
 
                 p.PrintEndLine();
 
-                p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-                p.PrintLine($"public override bool CanConvertFrom(global::System.ComponentModel.ITypeDescriptorContext context, global::System.Type sourceType)");
+                p.PrintLine(AGGRESSIVE_INLINING);
+                p.PrintLine($"public override bool CanConvertFrom(ITypeDescriptorContext context, Type sourceType)");
                 p.OpenScope();
                 {
                     p.PrintLine("if (sourceType == s_wrapperType || sourceType == s_underlyingType) return true;");
@@ -1270,8 +1274,8 @@ namespace TypeWrap.SourceGen
 
                 p.PrintEndLine();
 
-                p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-                p.PrintLine($"public override bool CanConvertTo(global::System.ComponentModel.ITypeDescriptorContext context, global::System.Type destinationType)");
+                p.PrintLine(AGGRESSIVE_INLINING);
+                p.PrintLine($"public override bool CanConvertTo(ITypeDescriptorContext context, Type destinationType)");
                 p.OpenScope();
                 {
                     p.PrintLine($"if (destinationType == s_wrapperType || destinationType == s_underlyingType) return true;");
@@ -1281,8 +1285,8 @@ namespace TypeWrap.SourceGen
 
                 p.PrintEndLine();
 
-                p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-                p.PrintLine($"public override object ConvertFrom(global::System.ComponentModel.ITypeDescriptorContext context, global::System.Globalization.CultureInfo culture, object value)");
+                p.PrintLine(AGGRESSIVE_INLINING);
+                p.PrintLine($"public override object ConvertFrom(ITypeDescriptorContext context, CultureInfo culture, object value)");
                 p.OpenScope();
                 {
                     p.PrintLine("if (value != null)");
@@ -1300,8 +1304,8 @@ namespace TypeWrap.SourceGen
 
                 p.PrintEndLine();
 
-                p.PrintLine(GENERATED_CODE).PrintLine(EXCLUDE_COVERAGE);
-                p.PrintLine($"public override object ConvertTo(global::System.ComponentModel.ITypeDescriptorContext context, global::System.Globalization.CultureInfo culture, object value, global::System.Type destinationType)");
+                p.PrintLine(AGGRESSIVE_INLINING);
+                p.PrintLine($"public override object ConvertTo(ITypeDescriptorContext context, CultureInfo culture, object value, Type destinationType)");
                 p.OpenScope();
                 {
                     p.PrintLine($"if (value is {FullTypeName} wrappedValue)");
@@ -1317,6 +1321,12 @@ namespace TypeWrap.SourceGen
                 p.CloseScope();
             }
             p.CloseScope();
+            p.PrintEndLine();
+        }
+
+        private static void WriteHelpers(ref Printer p)
+        {
+            p.PrintBeginLine("private const string GENERATOR = ").Print(GENERATOR).PrintEndLine(";");
             p.PrintEndLine();
         }
     }

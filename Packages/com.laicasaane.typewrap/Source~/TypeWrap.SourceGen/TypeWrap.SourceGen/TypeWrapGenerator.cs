@@ -25,7 +25,7 @@ namespace TypeWrap.SourceGen
             var projectPathProvider = SourceGenHelpers.GetSourceGenConfigProvider(context);
 
             var compilationProvider = context.CompilationProvider
-                .Select(static (x, _) => CompilationCandidate.GetCompilation(x, NAMESPACE, SKIP_ATTRIBUTE));
+                .Select(static (x, _) => CompilationCandidateSlim.GetCompilation(x, NAMESPACE, SKIP_ATTRIBUTE));
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: IsValidTypeSyntax,
@@ -106,11 +106,37 @@ namespace TypeWrap.SourceGen
                             candidate.isStruct = recordSyntax.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword);
                             candidate.isRecord = true;
 
+                            var syntaxTree = recordSyntax.SyntaxTree;
+                            var fileTypeName = symbol.ToFileName();
+                            var hintName = syntaxTree.GetGeneratedSourceFileName(
+                                  GENERATOR_NAME
+                                , recordSyntax
+                                , fileTypeName
+                            );
+
+                            var sourceFilePath = syntaxTree.GetGeneratedSourceFilePath(
+                                  semanticModel.Compilation.AssemblyName
+                                , GENERATOR_NAME
+                                , fileTypeName
+                            );
+
+                            TypeCreationHelpers.GenerateOpeningAndClosingSource(
+                                  recordSyntax
+                                , token
+                                , out var openingSource
+                                , out var closingSource
+                                , printAdditionalUsings: PrintAdditionalUsings
+                            );
+
                             return new TypeWrapDeclaration(
-                                  candidate.syntax
+                                  candidate.syntax.GetLocation()
+                                , hintName
+                                , sourceFilePath
+                                , openingSource
+                                , closingSource
                                 , candidate.symbol
                                 , candidate.typeName
-                                , candidate.typeNameWithTypeArgs
+                                , candidate.typeNameWithTypeParams
                                 , candidate.isStruct
                                 , candidate.isRefStruct
                                 , candidate.isRecord
@@ -137,11 +163,37 @@ namespace TypeWrap.SourceGen
                         candidate.isStruct = true;
                         candidate.isRefStruct = structSyntax.Modifiers.Any(SyntaxKind.RefKeyword);
 
+                        var syntaxTree = structSyntax.SyntaxTree;
+                        var fileTypeName = symbol.ToFileName();
+                        var hintName = syntaxTree.GetGeneratedSourceFileName(
+                                  GENERATOR_NAME
+                                , structSyntax
+                                , fileTypeName
+                            );
+
+                        var sourceFilePath = syntaxTree.GetGeneratedSourceFilePath(
+                                  semanticModel.Compilation.AssemblyName
+                                , GENERATOR_NAME
+                                , fileTypeName
+                            );
+
+                        TypeCreationHelpers.GenerateOpeningAndClosingSource(
+                              structSyntax
+                            , token
+                            , out var openingSource
+                            , out var closingSource
+                            , printAdditionalUsings: PrintAdditionalUsings
+                        );
+
                         return new TypeWrapDeclaration(
-                              candidate.syntax
+                              candidate.syntax.GetLocation()
+                            , hintName
+                            , sourceFilePath
+                            , openingSource
+                            , closingSource
                             , candidate.symbol
                             , candidate.typeName
-                            , candidate.typeNameWithTypeArgs
+                            , candidate.typeNameWithTypeParams
                             , candidate.isStruct
                             , candidate.isRefStruct
                             , candidate.isRecord
@@ -167,11 +219,37 @@ namespace TypeWrap.SourceGen
                             GetTypeName(classSyntax, ref candidate);
                             SetOtherFields(ref candidate, classSyntax, symbol, semanticModel, token);
 
+                            var syntaxTree = classSyntax.SyntaxTree;
+                            var fileTypeName = symbol.ToFileName();
+                            var hintName = syntaxTree.GetGeneratedSourceFileName(
+                                  GENERATOR_NAME
+                                , classSyntax
+                                , fileTypeName
+                            );
+
+                            var sourceFilePath = syntaxTree.GetGeneratedSourceFilePath(
+                                  semanticModel.Compilation.AssemblyName
+                                , GENERATOR_NAME
+                                , fileTypeName
+                            );
+
+                            TypeCreationHelpers.GenerateOpeningAndClosingSource(
+                                  classSyntax
+                                , token
+                                , out var openingSource
+                                , out var closingSource
+                                , printAdditionalUsings: PrintAdditionalUsings
+                            );
+
                             return new TypeWrapDeclaration(
-                                  candidate.syntax
+                                  candidate.syntax.GetLocation()
+                                , hintName
+                                , sourceFilePath
+                                , openingSource
+                                , closingSource
                                 , candidate.symbol
                                 , candidate.typeName
-                                , candidate.typeNameWithTypeArgs
+                                , candidate.typeNameWithTypeParams
                                 , candidate.isStruct
                                 , candidate.isRefStruct
                                 , candidate.isRecord
@@ -184,6 +262,25 @@ namespace TypeWrap.SourceGen
                     }
 
                     break;
+                }
+
+                static void PrintAdditionalUsings(ref Printer p)
+                {
+                    p.PrintEndLine();
+                    p.Print("#pragma warning disable CS0105 // Using directive appeared previously in this namespace").PrintEndLine();
+                    p.PrintEndLine();
+                    p.PrintLine("using System;");
+                    p.PrintLine("using System.ComponentModel;");
+                    p.PrintLine("using System.CodeDom.Compiler;");
+                    p.PrintLine("using System.Diagnostics;");
+                    p.PrintLine("using System.Diagnostics.CodeAnalysis;");
+                    p.PrintLine("using System.Globalization;");
+                    p.PrintLine("using System.Runtime.CompilerServices;");
+                    p.PrintLine("using System.Runtime.InteropServices;");
+                    p.PrintLine("using TypeWrap;");
+                    p.PrintEndLine();
+                    p.Print("#pragma warning restore CS0105 // Using directive appeared previously in this namespace").PrintEndLine();
+                    p.PrintEndLine();
                 }
             }
 
@@ -385,7 +482,7 @@ namespace TypeWrap.SourceGen
 
             static void GetTypeName(TypeDeclarationSyntax syntax, ref Candidate candidate)
             {
-                var typeNameWithTypeArgsBuilder = new StringBuilder(syntax.Identifier.ValueText);
+                var typeNameWithTypeParamsBuilder = new StringBuilder(syntax.Identifier.ValueText);
 
                 if (syntax.TypeParameterList is TypeParameterListSyntax typeParamList
                     && typeParamList.Parameters.Count > 0
@@ -393,26 +490,26 @@ namespace TypeWrap.SourceGen
                 {
                     candidate.isGeneric = true;
 
-                    typeNameWithTypeArgsBuilder.Append("<");
+                    typeNameWithTypeParamsBuilder.Append("<");
 
                     var typeParams = typeParamList.Parameters;
                     var last = typeParams.Count - 1;
 
                     for (var i = 0; i <= last; i++)
                     {
-                        typeNameWithTypeArgsBuilder.Append(typeParams[i].Identifier.Text);
+                        typeNameWithTypeParamsBuilder.Append(typeParams[i].Identifier.Text);
 
                         if (i < last)
                         {
-                            typeNameWithTypeArgsBuilder.Append(", ");
+                            typeNameWithTypeParamsBuilder.Append(", ");
                         }
                     }
 
-                    typeNameWithTypeArgsBuilder.Append(">");
+                    typeNameWithTypeParamsBuilder.Append(">");
                 }
 
                 candidate.typeName = syntax.Identifier.ValueText;
-                candidate.typeNameWithTypeArgs = typeNameWithTypeArgsBuilder.ToString();
+                candidate.typeNameWithTypeParams = typeNameWithTypeParamsBuilder.ToString();
             }
 
             static void SetOtherFields(
@@ -431,7 +528,7 @@ namespace TypeWrap.SourceGen
 
         private static void GenerateOutput(
               SourceProductionContext context
-            , CompilationCandidate compilation
+            , CompilationCandidateSlim compilation
             , TypeWrapDeclaration declaration
             , string projectPath
             , bool outputSourceGenFiles
@@ -448,25 +545,14 @@ namespace TypeWrap.SourceGen
             {
                 SourceGenHelpers.ProjectPath = projectPath;
 
-                var syntaxTree = declaration.Syntax.SyntaxTree;
-                var source = declaration.WriteCode();
-                var hintName = syntaxTree.GetGeneratedSourceFileName(
-                      GENERATOR_NAME
-                    , declaration.Syntax
-                    , declaration.TypeNameIndentifier
-                );
-
-                var sourceFilePath = syntaxTree.GetGeneratedSourceFilePath(
-                      compilation.assemblyName
-                    , GENERATOR_NAME
-                );
-
                 context.OutputSource(
                       outputSourceGenFiles
-                    , declaration.Syntax
-                    , source
-                    , hintName
-                    , sourceFilePath
+                    , declaration.OpeningSource
+                    , declaration.WriteCode()
+                    , declaration.ClosingSource
+                    , declaration.HintName
+                    , declaration.SourceFilePath
+                    , declaration.Location
                 );
             }
             catch (Exception e)
@@ -478,7 +564,7 @@ namespace TypeWrap.SourceGen
 
                 context.ReportDiagnostic(Diagnostic.Create(
                       s_errorDescriptor
-                    , declaration.Syntax.GetLocation()
+                    , declaration.Location
                     , e.ToUnityPrintableString()
                 ));
             }
@@ -499,7 +585,7 @@ namespace TypeWrap.SourceGen
             public TypeDeclarationSyntax syntax;
             public INamedTypeSymbol symbol;
             public string typeName;
-            public string typeNameWithTypeArgs;
+            public string typeNameWithTypeParams;
             public bool isGeneric;
             public bool isStruct;
             public bool isRefStruct;
@@ -515,21 +601,21 @@ namespace TypeWrap.SourceGen
                 && fieldTypeSyntax is { }
                 && fieldTypeSymbol is { }
                 && string.IsNullOrEmpty(typeName) == false
-                && string.IsNullOrEmpty(typeNameWithTypeArgs) == false
+                && string.IsNullOrEmpty(typeNameWithTypeParams) == false
                 && fieldTypeSymbol.TypeKind != TypeKind.Dynamic;
 
             public readonly override bool Equals(object obj)
                 => obj is Candidate other && Equals(other);
 
             public readonly bool Equals(Candidate other)
-                => string.Equals(typeNameWithTypeArgs, other.typeNameWithTypeArgs, StringComparison.Ordinal)
+                => string.Equals(typeNameWithTypeParams, other.typeNameWithTypeParams, StringComparison.Ordinal)
                 && string.Equals(fieldTypeSymbol?.ToFullName() ?? string.Empty, other.fieldTypeSymbol?.ToFullName() ?? string.Empty)
                 && fieldTypeSymbol?.TypeKind == other.fieldTypeSymbol?.TypeKind
                 ;
 
             public readonly override int GetHashCode()
                 => HashValue.Combine(
-                      typeNameWithTypeArgs
+                      typeNameWithTypeParams
                     , fieldTypeSymbol?.ToFullName() ?? string.Empty
                     , fieldTypeSymbol?.TypeKind
                 );

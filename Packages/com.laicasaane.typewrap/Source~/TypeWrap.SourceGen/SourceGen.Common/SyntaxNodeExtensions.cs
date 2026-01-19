@@ -28,8 +28,8 @@ namespace SourceGen.Common
         {
             SyntaxNode current = syntaxNode;
 
-            while (current.Parent != null && (
-                current.Parent is BaseNamespaceDeclarationSyntax
+            while (current.Parent != null
+                && (current.Parent is BaseNamespaceDeclarationSyntax
                 || current.Parent is ClassDeclarationSyntax
                 || current.Parent is StructDeclarationSyntax
             ))
@@ -45,7 +45,9 @@ namespace SourceGen.Common
         public static bool IsReadOnly(this IParameterSymbol parameter)
             => parameter.RefKind == RefKind.In;
 
-        public static IEnumerable<BaseNamespaceDeclarationSyntax> GetNamespacesFromMostToLeastNested(this SyntaxNode syntaxNode)
+        public static IEnumerable<BaseNamespaceDeclarationSyntax> GetNamespacesFromMostToLeastNested(
+            this SyntaxNode syntaxNode
+        )
         {
             SyntaxNode current = syntaxNode;
 
@@ -85,7 +87,7 @@ namespace SourceGen.Common
             var (isSuccess, fileName) = TryGetFileNameWithoutExtension(syntaxTree);
             var stableHashCode = syntaxTree.GetStableHashCode();
 
-            var postfix = generatorName.Length > 0 ? $"__{generatorName}" : string.Empty;
+            var postfix = string.Empty;
 
             if (string.IsNullOrWhiteSpace(typeName) == false)
             {
@@ -112,8 +114,11 @@ namespace SourceGen.Common
         }
 
         public static string GetGeneratedSourceFilePath(this SyntaxTree syntaxTree, string assemblyName, string generatorName)
+            => GetGeneratedSourceFilePath(syntaxTree, assemblyName, generatorName, string.Empty);
+
+        public static string GetGeneratedSourceFilePath(this SyntaxTree syntaxTree, string assemblyName, string generatorName, string typeName)
         {
-            var fileName = GetGeneratedSourceFileName(syntaxTree, generatorName);
+            var fileName = GetGeneratedSourceFileName(syntaxTree, generatorName, 0, typeName);
 
             if (SourceGenHelpers.CanWriteToProjectPath)
             {
@@ -187,7 +192,7 @@ namespace SourceGen.Common
             return argumentList?.DescendantNodes().OfType<ConditionalExpressionSyntax>().FirstOrDefault() != null;
         }
 
-        public static bool HasModifier(this ClassDeclarationSyntax cls, SyntaxKind modifier)
+        public static bool HasModifier(this MemberDeclarationSyntax cls, SyntaxKind modifier)
             => cls.Modifiers.Any(m => m.IsKind(modifier));
 
         public static T AncestorOfKind<T>(this SyntaxNode node)
@@ -606,6 +611,48 @@ namespace SourceGen.Common
 
             var toRemove = root.GetCurrentNode(nodeInList);
             return root.RemoveNode(toRemove, removeOptions);
+        }
+
+        public static string GetDisplayNameOrDefault(this MemberDeclarationSyntax syntax, string defaultValue)
+        {
+            var displayName = defaultValue;
+            Get(syntax, ref displayName);
+            return displayName;
+
+            static void Get(MemberDeclarationSyntax syntax, ref string displayName)
+            {
+                foreach (var attributeList in syntax.AttributeLists)
+                {
+                    if (attributeList is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var attrib in attributeList.Attributes)
+                    {
+                        if (attrib is null
+                            || attrib.Name is not IdentifierNameSyntax identifierName
+                            || attrib.ArgumentList is not AttributeArgumentListSyntax attributeArgumentList
+                            || attributeArgumentList.Arguments is not { Count: > 0 } attributeArguments
+                            || attributeArguments[0].Expression is not LiteralExpressionSyntax literalExpression
+                            || literalExpression.Token.Value is not string displayNameValue
+                        )
+                        {
+                            continue;
+                        }
+
+                        switch (identifierName.Identifier.Text)
+                        {
+                            case "Label":
+                            case "Description":
+                            case "Display":
+                            case "DisplayName":
+                                displayName = displayNameValue;
+                                return;
+                        }
+                    }
+                }
+            }
         }
     }
 }
