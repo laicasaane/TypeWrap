@@ -1,6 +1,9 @@
-﻿namespace TypeWrap.SourceGen
+﻿using System;
+using SourceGen.Common;
+
+namespace TypeWrap.SourceGen
 {
-    public readonly struct OpArgTypes
+    public readonly struct OpArgTypes : IEquatable<OpArgTypes>
     {
         public readonly OpType First;
         public readonly OpType Second;
@@ -68,5 +71,14 @@
                 }
             }
         }
+
+        public bool Equals(OpArgTypes other)
+            => First.Equals(other.First) && Second.Equals(other.Second);
+
+        public override bool Equals(object obj)
+            => obj is OpArgTypes other && Equals(other);
+
+        public override int GetHashCode()
+            => HashValue.Combine(First, Second);
     }
 }

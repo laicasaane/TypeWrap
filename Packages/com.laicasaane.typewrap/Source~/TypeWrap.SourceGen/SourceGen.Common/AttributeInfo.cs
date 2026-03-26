@@ -13,7 +13,6 @@ using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace SourceGen.Common
 {
-
     /// <summary>
     /// A model representing an attribute declaration.
     /// </summary>
@@ -107,20 +106,20 @@ namespace SourceGen.Common
 
         public override bool Equals(object obj)
         {
-            if (obj is AttributeInfo other)
-                return EqualityComparer<AttributeInfo>.Default.Equals(this, other);
-
-            return false;
+            return obj is AttributeInfo other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            return EqualityComparer<AttributeInfo>.Default.GetHashCode(this);
+            return HashValue.Combine(TypeName, ConstructorArgumentInfo, NamedArgumentInfo);
         }
 
         public bool Equals(AttributeInfo other)
         {
-            return EqualityComparer<AttributeInfo>.Default.Equals(this, other);
+            if (other is null) return false;
+            return TypeName == other.TypeName
+                && ConstructorArgumentInfo.Equals(other.ConstructorArgumentInfo)
+                && NamedArgumentInfo.Equals(other.NamedArgumentInfo);
         }
 
         /// <summary>
@@ -131,14 +130,14 @@ namespace SourceGen.Common
         {
             // Gather the constructor arguments
             IEnumerable<AttributeArgumentSyntax> arguments =
-            ConstructorArgumentInfo
-            .Select(static arg => AttributeArgument(arg.GetSyntax()));
+        ConstructorArgumentInfo
+        .Select(static arg => AttributeArgument(arg.GetSyntax()));
 
             // Gather the named arguments
             IEnumerable<AttributeArgumentSyntax> namedArguments =
-            NamedArgumentInfo.Select(static arg =>
-                AttributeArgument(arg.Value.GetSyntax())
-                .WithNameEquals(NameEquals(IdentifierName(arg.Name))));
+        NamedArgumentInfo.Select(static arg =>
+            AttributeArgument(arg.Value.GetSyntax())
+            .WithNameEquals(NameEquals(IdentifierName(arg.Name))));
 
             return Attribute(IdentifierName(TypeName), AttributeArgumentList(SeparatedList(arguments.Concat(namedArguments))));
         }

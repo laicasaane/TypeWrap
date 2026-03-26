@@ -1,6 +1,9 @@
-﻿namespace TypeWrap.SourceGen
+﻿using System;
+using SourceGen.Common;
+
+namespace TypeWrap.SourceGen
 {
-    public readonly struct OpType
+    public readonly struct OpType : IEquatable<OpType>
     {
         public readonly string Value;
         public readonly bool IsWrapper;
@@ -10,5 +13,17 @@
             Value = value;
             IsWrapper = isWrapper;
         }
+
+        public bool Equals(OpType other)
+            => string.Equals(Value, other.Value) && IsWrapper == other.IsWrapper;
+
+        public override bool Equals(object obj)
+            => obj is OpType other && Equals(other);
+
+        public override int GetHashCode()
+            => HashValue.Combine(Value, IsWrapper);
+
+        public override string ToString()
+            => $"({Value}, IsWrapper={IsWrapper})";
     }
 }

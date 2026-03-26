@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using SourceGen.Common;
 
 namespace TypeWrap.SourceGen
@@ -12,81 +11,81 @@ namespace TypeWrap.SourceGen
         public const string OBSOLETE_ATTRIBUTE = "global::System.ObsoleteAttribute";
         public const string FIELD_NAME_FORMAT = "{0}Of{1}";
 
-        public Location Location { get; }
+        public LocationInfo location;
 
-        public string HintName { get; }
+        public string hintName;
 
-        public string SourceFilePath { get; }
+        public string sourceFilePath;
 
-        public string OpeningSource { get; }
+        public string openingSource;
 
-        public string ClosingSource { get; }
+        public string closingSource;
 
-        public string TypeName { get; }
+        public string typeName;
 
-        public string TypeNameWithTypeParams { get; }
+        public string typeNameWithTypeParams;
 
-        public string FullTypeName { get; }
+        public string fullTypeName;
 
-        public string FieldTypeName { get; }
+        public string fieldTypeName;
 
-        public string FieldEnumUnderlyingTypeName { get; }
+        public string fieldEnumUnderlyingTypeName;
 
-        public string FieldName { get; }
+        public string fieldName;
 
-        public InterfaceKind IgnoreInterfaceMethods { get; }
+        public InterfaceKind ignoreInterfaceMethods;
 
-        public OperatorKind IgnoreOperators { get; }
+        public OperatorKind ignoreOperators;
 
-        public InterfaceKind ImplementInterfaces { get; }
+        public InterfaceKind implementInterfaces;
 
-        public OperatorKind ImplementOperators { get; }
+        public OperatorKind implementOperators;
 
-        public SpecialMethodType ImplementSpecialMethods { get; }
+        public SpecialMethodType implementSpecialMethods;
 
-        public SpecialType FieldSpecialType { get; }
+        public SpecialType fieldSpecialType;
 
-        public SpecialType FieldUnderlyingSpecialType { get; }
+        public SpecialType fieldUnderlyingSpecialType;
 
-        public bool IsRecord { get; }
+        public bool isRecord;
 
-        public bool IsStruct { get; }
+        public bool isStruct;
 
-        public bool IsRefStruct { get; }
+        public bool isRefStruct;
 
-        public bool FieldTypeIsInterface { get; }
+        public bool fieldTypeIsInterface;
 
-        public bool ExcludeConverter { get; }
+        public bool excludeConverter;
 
-        public bool IsFieldDeclared { get; }
+        public bool isFieldDeclared;
 
-        public bool IsFieldEnum { get; }
+        public bool isFieldEnum;
 
-        public bool IsReadOnly { get; }
+        public bool isReadOnly;
 
-        public bool FieldTypeIsReadOnly { get; }
+        public bool fieldTypeIsReadOnly;
 
-        public bool IsSealed { get; }
+        public bool isSealed;
 
-        public bool EnableNullable { get; }
+        public bool enableNullable;
 
-        public EquatableArray<FieldDeclaration> Fields { get; }
+        public EquatableArray<FieldDeclaration> fields;
 
-        public EquatableArray<PropertyDeclaration> Properties { get; }
+        public EquatableArray<PropertyDeclaration> properties;
 
-        public EquatableArray<EventDeclaration> Events { get; }
+        public EquatableArray<EventDeclaration> events;
 
-        public EquatableArray<MethodDeclaration> Methods { get; }
+        public EquatableArray<MethodDeclaration> methods;
 
-        public Dictionary<OperatorKind, HashSet<Operator>> OperatorMap { get; }
+        public EquatableArray<OperatorEntry> operatorEntries;
 
         public readonly bool IsValid
-            => string.IsNullOrEmpty(FullTypeName) == false
-            && string.IsNullOrEmpty(FieldTypeName) == false
-            && string.IsNullOrEmpty(FieldName) == false;
+            => string.IsNullOrEmpty(fullTypeName) == false
+            && string.IsNullOrEmpty(fieldTypeName) == false
+            && string.IsNullOrEmpty(fieldName) == false;
 
         public TypeWrapDeclaration(
-              Location location
+              LocationInfo location
             , string hintName
             , string sourceFilePath
             , string openingSource
@@ -108,57 +107,57 @@ namespace TypeWrap.SourceGen
                 fieldName = FIELD_NAME_FORMAT;
             }
 
-            Location = location;
-            HintName = hintName;
-            SourceFilePath = sourceFilePath;
-            OpeningSource = openingSource;
-            ClosingSource = closingSource;
-            TypeName = typeName;
-            TypeNameWithTypeParams = typeNameWithTypeParams;
-            FullTypeName = symbol.ToFullName();
-            IsReadOnly = symbol.IsReadOnly;
-            IsSealed = symbol.IsSealed;
-            IsStruct = isStruct;
-            IsRefStruct = isRefStruct;
-            IsRecord = isRecord;
-            EnableNullable = enableNullable;
-            FieldTypeIsReadOnly = fieldTypeSymbol.IsReadOnly;
-            FieldSpecialType = fieldTypeSymbol.SpecialType;
-            FieldTypeIsInterface = fieldTypeSymbol.TypeKind == TypeKind.Interface;
-            ImplementInterfaces = GetBuiltInInterfaces(fieldTypeSymbol);
-            ImplementOperators = GetBuiltInOperators(fieldTypeSymbol);
-            ImplementSpecialMethods = SpecialMethodType.CompareTo
+            this.location = location;
+            this.hintName = hintName;
+            this.sourceFilePath = sourceFilePath;
+            this.openingSource = openingSource;
+            this.closingSource = closingSource;
+            this.typeName = typeName;
+            this.typeNameWithTypeParams = typeNameWithTypeParams;
+            this.fullTypeName = symbol.ToFullName();
+            isReadOnly = symbol.IsReadOnly;
+            isSealed = symbol.IsSealed;
+            this.isStruct = isStruct;
+            this.isRefStruct = isRefStruct;
+            this.isRecord = isRecord;
+            this.enableNullable = enableNullable;
+            fieldTypeIsReadOnly = fieldTypeSymbol.IsReadOnly;
+            fieldSpecialType = fieldTypeSymbol.SpecialType;
+            fieldTypeIsInterface = fieldTypeSymbol.TypeKind == TypeKind.Interface;
+            this.implementInterfaces = GetBuiltInInterfaces(fieldTypeSymbol);
+            this.implementOperators = GetBuiltInOperators(fieldTypeSymbol);
+            this.implementSpecialMethods = SpecialMethodType.CompareTo
                 | SpecialMethodType.Equals
                 | SpecialMethodType.GetHashCode
                 | SpecialMethodType.ToString;
 
             if (fieldTypeSymbol.EnumUnderlyingType is INamedTypeSymbol underlyingTypeSymbol)
             {
-                FieldSpecialType = SpecialType.System_Enum;
-                FieldUnderlyingSpecialType = underlyingTypeSymbol.SpecialType;
+                fieldSpecialType = SpecialType.System_Enum;
+                fieldUnderlyingSpecialType = underlyingTypeSymbol.SpecialType;
             }
             else
             {
-                FieldUnderlyingSpecialType = SpecialType.None;
+                fieldUnderlyingSpecialType = SpecialType.None;
             }
 
             var fieldTypeAsIdentifier = fieldTypeSymbol.ToSimpleNoSpecialTypeValidIdentifier();
 
-            FieldName = string.Format(fieldName, isStruct ? "value" : "instance", fieldTypeAsIdentifier);
-            FieldTypeName = fieldTypeSymbol.ToFullName();
-            ExcludeConverter = excludeConverter;
-            IsFieldEnum = fieldTypeSymbol.IsEnumType();
-            FieldEnumUnderlyingTypeName = IsFieldEnum ? fieldTypeSymbol.EnumUnderlyingType.ToFullName() : string.Empty;
+            this.fieldName = string.Format(fieldName, isStruct ? "value" : "instance", fieldTypeAsIdentifier);
+            fieldTypeName = fieldTypeSymbol.ToFullName();
+            this.excludeConverter = excludeConverter;
+            isFieldEnum = fieldTypeSymbol.IsEnumType();
+            fieldEnumUnderlyingTypeName = isFieldEnum ? fieldTypeSymbol.EnumUnderlyingType.ToFullName() : string.Empty;
 
             var members = symbol.GetMembers();
             var definedMembers = new HashSet<string>(StringComparer.Ordinal);
             var globalFormat = SymbolExtensions.QualifiedMemberFormatWithGlobalPrefix;
-            var implementSpecialMethods = ImplementSpecialMethods;
-            var implementInterfaces = ImplementInterfaces;
-            var ignoreInterfaceMethods = IgnoreInterfaceMethods = default;
-            var ignoredOperators = IgnoreOperators = default;
+            var implementSpecialMethods = this.implementSpecialMethods;
+            var implementInterfaces = this.implementInterfaces;
+            var ignoreInterfaceMethods = this.ignoreInterfaceMethods = default;
+            var ignoredOperators = ignoreOperators = default;
 
-            IsFieldDeclared = false;
+            isFieldDeclared = false;
 
             foreach (var member in members)
             {
@@ -167,12 +166,12 @@ namespace TypeWrap.SourceGen
                     case IFieldSymbol field:
                     {
                         if (isRecord == false
-                            && IsFieldDeclared == false
-                            && field.Name == FieldName
+                            && this.isFieldDeclared == false
+                            && field.Name == this.fieldName
                             && SymbolEqualityComparer.Default.Equals(field.Type, fieldTypeSymbol)
                         )
                         {
-                            IsFieldDeclared = true;
+                            this.isFieldDeclared = true;
                         }
 
                         definedMembers.Add(field.ToDisplayString(globalFormat));
@@ -284,16 +283,17 @@ namespace TypeWrap.SourceGen
             using var propertyArrayBuilder = ImmutableArrayBuilder<PropertyDeclaration>.Rent();
             using var eventArrayBuilder = ImmutableArrayBuilder<EventDeclaration>.Rent();
             using var methodArrayBuilder = ImmutableArrayBuilder<MethodDeclaration>.Rent();
+            using var operatorEntryBuilder = ImmutableArrayBuilder<OperatorEntry>.Rent();
 
-            var fullTypeName = FullTypeName;
+            var fullTypeName = this.fullTypeName;
             var fieldTypeMembers = fieldTypeSymbol.GetMembers();
             var interfaces = fieldTypeSymbol.AllInterfaces;
             var memberMap = new Dictionary<string, string>(StringComparer.Ordinal);
             var genericTypeArgs = new List<ITypeSymbol>();
             var format = SymbolExtensions.QualifiedMemberFormatWithType;
-            var implementOperators = ImplementOperators;
+            var implementOperators = this.implementOperators;
             var hasBuiltInOperators = implementOperators != OperatorKind.None;
-            var operatorMap = OperatorMap = new(OperatorKinds.All.Length);
+            var operatorMap = new Dictionary<OperatorKind, HashSet<Operator>>(OperatorKinds.All.Length);
 
             foreach (var member in fieldTypeMembers)
             {
@@ -326,8 +326,8 @@ namespace TypeWrap.SourceGen
                                 propertyArrayBuilder.Add(PropertyDeclaration.Create(
                                       property
                                     , fieldTypeSymbol
-                                    , IsStruct
-                                    , IsReadOnly
+                                    , this.isStruct
+                                    , this.isReadOnly
                                 ));
                             }
                         }
@@ -394,8 +394,8 @@ namespace TypeWrap.SourceGen
                             }
 
                             var returnType = GetOpType(
-                            method.ReturnType, fieldTypeSymbol, fullTypeName, RetainReturnType(foundOp)
-                        );
+                                method.ReturnType, fieldTypeSymbol, fullTypeName, RetainReturnType(foundOp)
+                            );
 
                             var methodParams = method.Parameters;
                             var methodParamsLength = methodParams.Length;
@@ -409,10 +409,10 @@ namespace TypeWrap.SourceGen
                                     && first.IsWrapper && second.IsWrapper
                                 )
                                 {
-                                    var second2 = new OpType(FieldTypeName);
+                                    var second2 = new OpType(fieldTypeName);
                                     operators.Add(new Operator(returnType, new OpArgTypes(first, second2)));
 
-                                    var first2 = new OpType(FieldTypeName);
+                                    var first2 = new OpType(fieldTypeName);
                                     operators.Add(new Operator(returnType, new OpArgTypes(first2, second)));
                                 }
                                 else
@@ -444,15 +444,25 @@ namespace TypeWrap.SourceGen
                 }
             }
 
-            ImplementSpecialMethods = implementSpecialMethods;
-            IgnoreInterfaceMethods = ignoreInterfaceMethods;
-            IgnoreOperators = ignoredOperators;
-            ImplementInterfaces = implementInterfaces;
-            ImplementOperators = implementOperators;
-            Fields = fieldArrayBuilder.ToImmutable();
-            Properties = propertyArrayBuilder.ToImmutable();
-            Events = eventArrayBuilder.ToImmutable();
-            Methods = methodArrayBuilder.ToImmutable();
+            this.implementSpecialMethods = implementSpecialMethods;
+            this.ignoreInterfaceMethods = ignoreInterfaceMethods;
+            ignoreOperators = ignoredOperators;
+            this.implementInterfaces = implementInterfaces;
+            this.implementOperators = implementOperators;
+            fields = fieldArrayBuilder.ToImmutable();
+            properties = propertyArrayBuilder.ToImmutable();
+            events = eventArrayBuilder.ToImmutable();
+            methods = methodArrayBuilder.ToImmutable();
+
+            foreach (var kvp in operatorMap)
+            {
+                foreach (var op in kvp.Value)
+                {
+                    operatorEntryBuilder.Add(new OperatorEntry(kvp.Key, op));
+                }
+            }
+
+            operatorEntries = operatorEntryBuilder.ToImmutable();
         }
 
         private static bool ValidateSpecial(
@@ -889,32 +899,61 @@ namespace TypeWrap.SourceGen
             => obj is TypeWrapDeclaration other && Equals(other);
 
         public readonly bool Equals(TypeWrapDeclaration other)
-            => Location == other.Location
-            && string.Equals(FullTypeName, other.FullTypeName, StringComparison.Ordinal)
-            && string.Equals(FieldTypeName, other.FieldTypeName, StringComparison.Ordinal)
-            && string.Equals(FieldEnumUnderlyingTypeName, other.FieldEnumUnderlyingTypeName, StringComparison.Ordinal)
-            && string.Equals(FieldName, other.FieldName, StringComparison.Ordinal)
-            && ExcludeConverter == other.ExcludeConverter
-            && Fields.Equals(other.Fields)
-            && Properties.Equals(other.Properties)
-            && Events.Equals(other.Events)
-            && Methods.Equals(other.Methods)
+            => string.Equals(hintName, other.hintName, StringComparison.Ordinal)
+            && string.Equals(sourceFilePath, other.sourceFilePath, StringComparison.Ordinal)
+            && string.Equals(openingSource, other.openingSource, StringComparison.Ordinal)
+            && string.Equals(closingSource, other.closingSource, StringComparison.Ordinal)
+            && string.Equals(fullTypeName, other.fullTypeName, StringComparison.Ordinal)
+            && string.Equals(fieldTypeName, other.fieldTypeName, StringComparison.Ordinal)
+            && string.Equals(fieldEnumUnderlyingTypeName, other.fieldEnumUnderlyingTypeName, StringComparison.Ordinal)
+            && string.Equals(fieldName, other.fieldName, StringComparison.Ordinal)
+            && excludeConverter == other.excludeConverter
+            && fields.Equals(other.fields)
+            && properties.Equals(other.properties)
+            && events.Equals(other.events)
+            && methods.Equals(other.methods)
+            && operatorEntries.Equals(other.operatorEntries)
             ;
 
         public readonly override int GetHashCode()
         {
             var hash = new HashValue();
-            hash.Add(Location);
-            hash.Add(FullTypeName);
-            hash.Add(FieldTypeName);
-            hash.Add(FieldEnumUnderlyingTypeName);
-            hash.Add(FieldName);
-            hash.Add(ExcludeConverter);
-            hash.Add(Fields);
-            hash.Add(Properties);
-            hash.Add(Events);
-            hash.Add(Methods);
+            hash.Add(hintName);
+            hash.Add(sourceFilePath);
+            hash.Add(openingSource);
+            hash.Add(closingSource);
+            hash.Add(fullTypeName);
+            hash.Add(fieldTypeName);
+            hash.Add(fieldEnumUnderlyingTypeName);
+            hash.Add(fieldName);
+            hash.Add(excludeConverter);
+            hash.Add(fields);
+            hash.Add(properties);
+            hash.Add(events);
+            hash.Add(methods);
+            hash.Add(operatorEntries);
             return hash.ToHashCode();
+        }
+
+        public readonly struct OperatorEntry : IEquatable<OperatorEntry>
+        {
+            public readonly OperatorKind Kind;
+            public readonly Operator Op;
+
+            public OperatorEntry(OperatorKind kind, Operator op)
+            {
+                Kind = kind;
+                Op = op;
+            }
+
+            public bool Equals(OperatorEntry other)
+                => Kind == other.Kind && Op.Equals(other.Op);
+
+            public override bool Equals(object obj)
+                => obj is OperatorEntry other && Equals(other);
+
+            public override int GetHashCode()
+                => HashValue.Combine(Kind, Op);
         }
 
         public readonly struct Operator : IEquatable<Operator>
@@ -942,6 +981,23 @@ namespace TypeWrap.SourceGen
 
             public override int GetHashCode()
                 => HashValue.Combine(ReturnType, ArgTypes);
+        }
+
+        private readonly Dictionary<OperatorKind, HashSet<Operator>> GetOperatorMap()
+        {
+            var map = new Dictionary<OperatorKind, HashSet<Operator>>();
+
+            foreach (var entry in operatorEntries)
+            {
+                if (map.TryGetValue(entry.Kind, out var ops) == false)
+                {
+                    map[entry.Kind] = ops = new HashSet<Operator>();
+                }
+
+                ops.Add(entry.Op);
+            }
+
+            return map;
         }
     }
 }
